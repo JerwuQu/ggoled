@@ -1,0 +1,9 @@
+{
+	"nixEnvSelector.nixFile": "${workspaceRoot}/shell.nix",
+	"editor.tabSize": 4,
+	"editor.insertSpaces": true,
+	"editor.formatOnSave": true,
+	"editor.rulers": [
+		140
+	]
+}
