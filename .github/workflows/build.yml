@@ -6,24 +6,34 @@ on:
     branches: [ "master" ]
 jobs:
   release:
-    name: Release - ${{ matrix.platform.release_for }}
+    name: Release - ${{ matrix.platform.target }}
     strategy:
       matrix:
         platform:
-          - release_for: Windows-x86_64
-            os: windows-latest
+          - os: windows-latest
             target: x86_64-pc-windows-gnu
             bin: sanpwo.exe
-            name: sanpwo-x86_64-pc-windows-gnu.zip
-            command: build
     runs-on: ${{ matrix.platform.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          key: ${{ matrix.platform.target }}-${{ matrix.platform.os }}
+          path: |
+            ~/.cargo
+            target
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v0
         with:
-          command: ${{ matrix.platform.command }}
+          command: build
           target: ${{ matrix.platform.target }}
           args: "--locked --release"
           strip: true
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.platform.target }}
+          path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+
