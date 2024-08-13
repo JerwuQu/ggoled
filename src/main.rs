@@ -1,11 +1,12 @@
+use clap::Parser;
+use core::str;
+use image::io::Reader as ImageReader;
+use rusttype::{point, Font, Scale};
 use std::{
     io::Read,
     ops::Div,
     time::{Duration, SystemTime},
 };
-
-use clap::Parser;
-use image::io::Reader as ImageReader;
 
 const SCREEN_WIDTH: u8 = 128;
 const SCREEN_HEIGHT: u8 = 64;
@@ -33,6 +34,50 @@ impl Bitmap {
                 .pixels()
                 .map(|p| ((p.0[0] as usize) + (p.0[1] as usize) + (p.0[2] as usize)) / 3 >= threshold)
                 .collect::<Vec<bool>>(),
+        }
+    }
+    fn from_text(text: &str) -> Bitmap {
+        // heavily based on https://github.com/redox-os/rusttype/blob/c1e820b4418c0bfad9bf8753acbb90e872408a6e/dev/examples/image.rs#L4
+        // TODO: line breaks
+        let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
+        let scale = Scale::uniform(16.0);
+        let glyphs: Vec<_> = font.layout(&text, scale, point(0.0, 0.0)).collect();
+        let w_offset = glyphs
+            .iter()
+            .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.x).unwrap_or(0))
+            .max()
+            .unwrap_or(0);
+        let h_offset = glyphs
+            .iter()
+            .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.y).unwrap_or(0))
+            .max()
+            .unwrap_or(0);
+        let w = glyphs
+            .iter()
+            .map(|g| g.pixel_bounding_box().map(|bb| bb.max.x + 1).unwrap_or(0) + w_offset)
+            .max()
+            .unwrap_or(0) as usize;
+        let h = glyphs
+            .iter()
+            .map(|g| g.pixel_bounding_box().map(|bb| bb.max.y + 1).unwrap_or(0) + h_offset)
+            .max()
+            .unwrap_or(0) as usize;
+        //let v_metrics = font.v_metrics(scale);
+        //let h = (v_metrics.ascent - v_metrics.descent).ceil() as usize;
+        let mut pixels = vec![false; w * h];
+        for glyph in glyphs {
+            if let Some(bb) = glyph.pixel_bounding_box() {
+                glyph.draw(|x, y, v| {
+                    let px = (x as i32 + bb.min.x) as usize;
+                    let py = (y as i32 + h_offset + bb.min.y) as usize;
+                    pixels[py * w + px] = v > 0.5;
+                })
+            }
+        }
+        Bitmap {
+            w: w as u8,
+            h: h as u8,
+            pixels,
         }
     }
     fn crop(&self, x: u8, y: u8, w: u8, h: u8) -> Bitmap {
@@ -89,8 +134,8 @@ impl Drawable {
         report[3] = self.y;
         report[4] = self.bitmap.w;
         report[5] = self.bitmap.h;
-        // TODO: this calculation might be incorrect. do proper testing for corruption by mixing weird x/y/w/h combinations.
-        let stride_h = (self.bitmap.h + self.y % 8).div_ceil(8) * 8;
+        // NOTE: this stride calculation *seems* to work, but maybe i'm missing something - if you get corrupt stuff on the screen varying on position, this is why
+        let stride_h = self.bitmap.h.div_ceil(8) * 8;
         for y in 0..self.bitmap.h {
             for x in 0..self.bitmap.w {
                 // NOTE: report has columns rather than rows
@@ -121,20 +166,12 @@ impl Drawable {
 }
 
 #[derive(clap::Args)]
-struct ImageArgs {
+struct DrawArgs {
     #[arg(short = 'x', long, help = "Screen X offset for draw commands", default_value = "0")]
     screen_x: u8,
 
     #[arg(short = 'y', long, help = "Screen Y offset for draw commands", default_value = "0")]
     screen_y: u8,
-
-    #[arg(
-        short = 'T',
-        long,
-        help = "Grayscale threshold for converting images to 1-bit",
-        default_value = "100"
-    )]
-    threshold: usize,
 
     #[arg(
         short = 'C',
@@ -143,11 +180,47 @@ struct ImageArgs {
         default_value = "false"
     )]
     clear: bool,
+    //
+    // TODO: invert
+}
+
+#[derive(clap::Args)]
+struct ImageArgs {
+    #[command(flatten)]
+    draw_args: DrawArgs,
+
+    #[arg(
+        short = 'T',
+        long,
+        help = "Grayscale threshold for converting images to 1-bit",
+        default_value = "100"
+    )]
+    threshold: usize,
 }
 
 #[derive(Parser)]
 #[command(about = "SteelSeries Arctis Nova Pro Wireless OLED drawing utility")]
 enum Args {
+    #[command(about = "Clear the entire screen to black")]
+    Clear,
+
+    #[command(about = "Fill the entire screen to white")]
+    Fill,
+
+    #[command(about = "Draw some text")]
+    Text {
+        #[command(flatten)]
+        draw_args: DrawArgs,
+
+        #[arg(help = "Text, or omitted for stdin", index = 1)]
+        text: Option<String>,
+        //
+        // TODO: custom font
+        // TODO: font size
+        // TODO: alignment (left/center/right)
+        // TODO: some way to update text from stdin without re-invoking the command
+    },
+
     #[command(about = "Draw an image")]
     Img {
         #[command(flatten)]
@@ -156,12 +229,13 @@ enum Args {
         #[arg(help = "Image path, or - for stdin", index = 1)]
         path: String,
     },
+
     #[command(about = "Draw a sequence of images")]
     Anim {
         #[command(flatten)]
         image_args: ImageArgs,
 
-        #[arg(short = 'r', long, help = "Amount of frames to show per second", default_value = "1")]
+        #[arg(short = 'r', long, help = "Frames to show per second (fps)", default_value = "1")]
         framerate: u32,
 
         #[arg(
@@ -175,10 +249,6 @@ enum Args {
         #[arg(help = "Image paths", index = 1)]
         paths: Vec<String>,
     },
-    #[command(about = "Clear the entire screen to black")]
-    Clear,
-    #[command(about = "Fill the entire screen to white")]
-    Fill,
 }
 
 fn draw(dev: &hidapi::HidDevice, drawable: &Drawable) {
@@ -198,8 +268,27 @@ fn main() {
         .open_device(&api)
         .expect("Failed to open device");
 
+    // TODO: unify clear, draw and (later) invert between commands
     match args {
+        Args::Clear => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false)),
+        Args::Fill => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, true)),
+        Args::Text { text, draw_args } => {
+            let text = text.unwrap_or_else(|| {
+                let mut buf = Vec::<u8>::new();
+                std::io::stdin()
+                    .read_to_end(&mut buf)
+                    .expect("Failed to read from stdin");
+                String::from_utf8(buf).unwrap()
+            });
+            let bitmap = Bitmap::from_text(&text);
+            let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
+            if draw_args.clear {
+                draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false));
+            }
+            draw(&dev, &drawable)
+        }
         Args::Img { path, image_args } => {
+            let draw_args = &image_args.draw_args;
             let img = if path == "-" {
                 let mut buf = Vec::<u8>::new();
                 std::io::stdin()
@@ -213,8 +302,8 @@ fn main() {
                     .expect("Failed to decode image")
             };
             let bitmap = Bitmap::from_image(&img, image_args.threshold);
-            let drawable = Drawable::from_bitmap(bitmap, image_args.screen_x, image_args.screen_y).crop_to_screen();
-            if image_args.clear {
+            let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
+            if draw_args.clear {
                 draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false));
             }
             draw(&dev, &drawable)
@@ -225,6 +314,7 @@ fn main() {
             paths,
             image_args,
         } => {
+            let draw_args = &image_args.draw_args;
             if framerate == 0 {
                 panic!("Framerate must be non-zero");
             } else if paths.is_empty() {
@@ -238,10 +328,10 @@ fn main() {
                         .decode()
                         .expect("Failed to decode image");
                     let bitmap = Bitmap::from_image(&img, image_args.threshold);
-                    Drawable::from_bitmap(bitmap, image_args.screen_x, image_args.screen_y).crop_to_screen()
+                    Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen()
                 })
                 .collect();
-            if image_args.clear {
+            if draw_args.clear {
                 draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false));
             }
             let draw_animation = || {
@@ -269,7 +359,5 @@ fn main() {
                 }
             }
         }
-        Args::Clear => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false)),
-        Args::Fill => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, true)),
     }
 }
