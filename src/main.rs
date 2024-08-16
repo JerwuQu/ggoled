@@ -8,27 +8,40 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-const SCREEN_WIDTH: u8 = 128;
-const SCREEN_HEIGHT: u8 = 64;
-const REPORT_SPLIT_SZ: u8 = 64;
+const SCREEN_WIDTH: usize = 128;
+const SCREEN_HEIGHT: usize = 64;
+const REPORT_SPLIT_SZ: usize = 64;
 const REPORT_SIZE: usize = 1024;
 type DrawReport = [u8; REPORT_SIZE];
 
 struct Bitmap {
-    w: u8,
-    h: u8,
+    w: usize,
+    h: usize,
     pixels: Vec<bool>,
 }
 struct Drawable {
-    x: u8,
-    y: u8,
+    x: usize,
+    y: usize,
     bitmap: Bitmap,
 }
 impl Bitmap {
+    fn new(w: usize, h: usize, on: bool) -> Bitmap {
+        Bitmap {
+            w,
+            h,
+            pixels: (0..(w as usize) * (h as usize)).map(|_| on).collect::<Vec<bool>>(),
+        }
+    }
+    fn get(&self, x: usize, y: usize) -> bool {
+        self.pixels[y * self.w + x]
+    }
+    fn set(&mut self, x: usize, y: usize, on: bool) {
+        self.pixels[y * self.w + x] = on;
+    }
     fn from_image(img: &image::DynamicImage, threshold: usize) -> Bitmap {
         Bitmap {
-            w: img.width() as u8,
-            h: img.height() as u8,
+            w: img.width() as usize,
+            h: img.height() as usize,
             pixels: img
                 .to_rgb8()
                 .pixels()
@@ -74,13 +87,9 @@ impl Bitmap {
                 })
             }
         }
-        Bitmap {
-            w: w as u8,
-            h: h as u8,
-            pixels,
-        }
+        Bitmap { w, h, pixels }
     }
-    fn crop(&self, x: u8, y: u8, w: u8, h: u8) -> Bitmap {
+    fn crop(&self, x: usize, y: usize, w: usize, h: usize) -> Bitmap {
         let mut pixels = Vec::<bool>::with_capacity((w as usize) * (h as usize));
         for ny in 0..h {
             for nx in 0..w {
@@ -93,18 +102,14 @@ impl Bitmap {
     }
 }
 impl Drawable {
-    fn from_bitmap(bitmap: Bitmap, x: u8, y: u8) -> Drawable {
+    fn from_bitmap(bitmap: Bitmap, x: usize, y: usize) -> Drawable {
         Drawable { x, y, bitmap }
     }
-    fn rect(x: u8, y: u8, w: u8, h: u8, on: bool) -> Drawable {
+    fn rect(x: usize, y: usize, w: usize, h: usize, on: bool) -> Drawable {
         Drawable {
             x,
             y,
-            bitmap: Bitmap {
-                w,
-                h,
-                pixels: (0..(w as usize) * (h as usize)).map(|_| on).collect::<Vec<bool>>(),
-            },
+            bitmap: Bitmap::new(w, h, on),
         }
     }
     fn crop_to_screen(&self) -> Drawable {
@@ -118,6 +123,18 @@ impl Drawable {
             bitmap: self.bitmap.crop(0, 0, w, h),
         }
     }
+    fn blit(&mut self, other: &Drawable) {
+        for bx in 0..other.bitmap.w {
+            for by in 0..other.bitmap.h {
+                self.bitmap.set(other.x + bx, other.y + by, other.bitmap.get(bx, by));
+            }
+        }
+    }
+    fn with_clear(&self) -> Drawable {
+        let mut screen = Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false);
+        screen.blit(self);
+        screen
+    }
     fn as_hid_report(&self) -> DrawReport {
         let mut report: DrawReport = [0; REPORT_SIZE];
         // TODO: figure out the actual limits for a single report
@@ -130,10 +147,10 @@ impl Drawable {
         }
         report[0] = 0x06; // hid report id
         report[1] = 0x93; // steelseries command id? unknown
-        report[2] = self.x;
-        report[3] = self.y;
-        report[4] = self.bitmap.w;
-        report[5] = self.bitmap.h;
+        report[2] = self.x as u8;
+        report[3] = self.y as u8;
+        report[4] = self.bitmap.w as u8;
+        report[5] = self.bitmap.h as u8;
         // NOTE: this stride calculation *seems* to work, but maybe i'm missing something - if you get corrupt stuff on the screen varying on position, this is why
         let stride_h = self.bitmap.h.div_ceil(8) * 8;
         for y in 0..self.bitmap.h {
@@ -168,10 +185,10 @@ impl Drawable {
 #[derive(clap::Args)]
 struct DrawArgs {
     #[arg(short = 'x', long, help = "Screen X offset for draw commands", default_value = "0")]
-    screen_x: u8,
+    screen_x: usize,
 
     #[arg(short = 'y', long, help = "Screen Y offset for draw commands", default_value = "0")]
-    screen_y: u8,
+    screen_y: usize,
 
     #[arg(
         short = 'C',
@@ -251,8 +268,10 @@ enum Args {
     },
 }
 
-fn draw(dev: &hidapi::HidDevice, drawable: &Drawable) {
-    for d in drawable.crop_to_screen().split_for_reports() {
+fn draw(dev: &hidapi::HidDevice, drawable: &Drawable, clear: bool) {
+    let drawable = drawable.crop_to_screen();
+    let drawable = if clear { drawable.with_clear() } else { drawable };
+    for d in drawable.split_for_reports() {
         dev.send_feature_report(&d.as_hid_report()).unwrap();
     }
 }
@@ -268,10 +287,9 @@ fn main() {
         .open_device(&api)
         .expect("Failed to open device");
 
-    // TODO: unify clear, draw and (later) invert between commands
     match args {
-        Args::Clear => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false)),
-        Args::Fill => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, true)),
+        Args::Clear => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false), false),
+        Args::Fill => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, true), false),
         Args::Text { text, draw_args } => {
             let text = text.unwrap_or_else(|| {
                 let mut buf = Vec::<u8>::new();
@@ -282,10 +300,7 @@ fn main() {
             });
             let bitmap = Bitmap::from_text(&text);
             let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
-            if draw_args.clear {
-                draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false));
-            }
-            draw(&dev, &drawable)
+            draw(&dev, &drawable, draw_args.clear);
         }
         Args::Img { path, image_args } => {
             let draw_args = &image_args.draw_args;
@@ -303,10 +318,7 @@ fn main() {
             };
             let bitmap = Bitmap::from_image(&img, image_args.threshold);
             let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
-            if draw_args.clear {
-                draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false));
-            }
-            draw(&dev, &drawable)
+            draw(&dev, &drawable, false);
         }
         Args::Anim {
             framerate,
@@ -331,13 +343,10 @@ fn main() {
                     Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen()
                 })
                 .collect();
-            if draw_args.clear {
-                draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false));
-            }
             let draw_animation = || {
                 let period = Duration::from_secs(1).div(framerate);
                 let mut next_frame = SystemTime::now() + period;
-                draw(&dev, &drawables[0]);
+                draw(&dev, &drawables[0], draw_args.clear);
                 for drawable in drawables.iter().skip(1) {
                     let time = SystemTime::now();
                     if time < next_frame {
@@ -345,7 +354,7 @@ fn main() {
                     } else {
                         println!("fell behind - framerate too fast");
                     }
-                    draw(&dev, drawable);
+                    draw(&dev, drawable, false);
                     next_frame += period;
                 }
             };
