@@ -50,11 +50,17 @@ impl Bitmap {
         }
     }
     fn from_text(text: &str) -> Bitmap {
-        // heavily based on https://github.com/redox-os/rusttype/blob/c1e820b4418c0bfad9bf8753acbb90e872408a6e/dev/examples/image.rs#L4
-        // TODO: line breaks
+        // initially based on https://github.com/redox-os/rusttype/blob/c1e820b4418c0bfad9bf8753acbb90e872408a6e/dev/examples/image.rs#L4
         let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
         let scale = Scale::uniform(16.0);
-        let glyphs: Vec<_> = font.layout(&text, scale, point(0.0, 0.0)).collect();
+        let clean_text = text.replace('\r', "");
+        let lines = clean_text.split('\n');
+        let v_metrics = font.v_metrics(scale);
+        let line_h = (v_metrics.ascent - v_metrics.descent).ceil();
+        let glyphs: Vec<_> = lines
+            .enumerate()
+            .flat_map(|(yi, line)| font.layout(line, scale, point(0.0, yi as f32 * line_h)))
+            .collect();
         let w_offset = glyphs
             .iter()
             .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.x).unwrap_or(0))
@@ -75,8 +81,6 @@ impl Bitmap {
             .map(|g| g.pixel_bounding_box().map(|bb| bb.max.y + 1).unwrap_or(0) + h_offset)
             .max()
             .unwrap_or(0) as usize;
-        //let v_metrics = font.v_metrics(scale);
-        //let h = (v_metrics.ascent - v_metrics.descent).ceil() as usize;
         let mut pixels = vec![false; w * h];
         for glyph in glyphs {
             if let Some(bb) = glyph.pixel_bounding_box() {
