@@ -4,14 +4,21 @@ Put custom graphics on your SteelSeries Arctis Nova Pro Base Station 128x64 OLED
 
 This utility implements the USB protocol, so you don't need SteelSeries GG/Engine Apps/GameSense, and it works on linux.
 
-It is currently focused on the SteelSeries Arctis Nova product(s) since that's what I own myself, but PRs and issues for other models (or brands!) are welcome!
-
 ## Showcase
 
 Bad Apple at 60 fps.
 This also showcases the burn-in you will get if not careful with OLEDs. The flickering is due to bad camera settings and not actually shown on the display.
 
 [![Bad Apple on the Base Station](http://img.youtube.com/vi/k51zNrMLti4/0.jpg)](http://www.youtube.com/watch?v=k51zNrMLti4 "Bad Apple on a SteelSeries Arctis Nova Pro Wireless Base Station")
+
+## Supported Devices
+
+| Device                               | Supported |
+| ------------------------------------ | --------- |
+| SteelSeries Arctis Nova Pro Wired    | ✅        |
+| SteelSeries Arctis Nova Pro Wireless | ✅        |
+
+PRs and issues for similar devices are welcome!
 
 ## Usage
 

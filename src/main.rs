@@ -286,7 +286,13 @@ fn main() {
     let api = hidapi::HidApi::new().unwrap();
     let dev = api
         .device_list()
-        .find(|d| d.vendor_id() == 0x1038 && d.product_id() == 0x12e0 && d.interface_number() == 4)
+        .find(|d| {
+            d.vendor_id() == 0x1038 // SteelSeries
+        && [
+            0x12cb, // Arctis Nova Pro Wired
+            0x12e0, // Arctis Nova Pro Wireless
+        ].contains(&d.product_id()) && d.interface_number() == 4
+        })
         .expect("Device not found")
         .open_device(&api)
         .expect("Failed to open device");
