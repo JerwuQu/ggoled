@@ -220,7 +220,7 @@ struct ImageArgs {
 }
 
 #[derive(Parser)]
-#[command(about = "SteelSeries Arctis Nova Pro Wireless OLED drawing utility")]
+#[command(about = "SteelSeries Arctis Nova Pro OLED drawing utility")]
 enum Args {
     #[command(about = "Clear the entire screen to black")]
     Clear,
