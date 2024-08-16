@@ -1,9 +1,9 @@
 name: Build
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 jobs:
   release:
     name: Release - ${{ matrix.platform.target }}
@@ -12,7 +12,7 @@ jobs:
         platform:
           - os: windows-latest
             target: x86_64-pc-windows-gnu
-            bin: sanpwo.exe
+            bin: ggoled.exe
     runs-on: ${{ matrix.platform.os }}
     steps:
       - name: Checkout
@@ -36,4 +36,3 @@ jobs:
         with:
           name: ${{ matrix.platform.target }}
           path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
-

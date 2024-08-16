@@ -1,8 +1,10 @@
-# arctis-nova-oled
+# ggoled
 
-Put graphics on your SteelSeries Arctis Nova Pro Base Station 128x64 OLED screen.
+Put custom graphics on your SteelSeries Arctis Nova Pro Base Station 128x64 OLED screen.
 
 This utility implements the USB protocol, so you don't need SteelSeries GG/Engine Apps/GameSense, and it works on linux.
+
+It is currently focused on the SteelSeries Arctis Nova product(s) since that's what I own myself, but PRs and issues for other models (or brands!) are welcome!
 
 ## Showcase
 
@@ -13,13 +15,13 @@ This also showcases the burn-in you will get if not careful with OLEDs. The flic
 
 ## Usage
 
-- `sanpwo text "Hello, World!"`: draw some text onto your display.
-- `sanpwo img cool_image.png`: draw an image onto your display.
-- `sanpwo anim -r 10 -l 20 frame1.png frame2.png frame3.png`: play an animation at 10 fps, looped 20 times.
-- See `sanpwo --help` for more help, and [the `scripts`](https://github.com/JerwuQu/arctis-nova-oled/tree/master/scripts) for more examples.
+- `ggoled text "Hello, World!"`: draw some text onto your display.
+- `ggoled img cool_image.png`: draw an image onto your display.
+- `ggoled anim -r 10 -l 20 frame1.png frame2.png frame3.png`: play an animation at 10 fps, looped 20 times.
+- See `ggoled --help` for more commands and flags.
 
 ## Install
 
-`cargo install --git https://github.com/JerwuQu/arctis-nova-oled.git`
+`cargo install --git https://github.com/JerwuQu/ggoled.git`
 
-To run without root on linux you need to copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/arctis-nova-oled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/` and run `udevadm control --reload` and `udevadm trigger` as root.
+To run without root on linux you need to copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/` and run `udevadm control --reload` and `udevadm trigger` as root.

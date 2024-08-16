@@ -258,6 +258,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ggoled"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "hidapi",
+ "image",
+ "rusttype",
+]
+
+[[package]]
 name = "gif"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -476,16 +486,6 @@ checksum = "3ff8374aa04134254b7995b63ad3dc41c7f7236f69528b28553da7d72efaa967"
 dependencies = [
  "ab_glyph_rasterizer",
  "owned_ttf_parser",
-]
-
-[[package]]
-name = "sanpwo"
-version = "0.1.0"
-dependencies = [
- "clap",
- "hidapi",
- "image",
- "rusttype",
 ]
 
 [[package]]

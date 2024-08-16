@@ -1,6 +1,6 @@
 with import <nixpkgs> { };
 mkShell {
-  name = "sanpwo-env";
+  name = "ggoled-env";
   packages = [
     rustup
     gcc
