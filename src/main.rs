@@ -80,15 +80,13 @@ impl Bitmap {
         let block_w = line_glyphs.iter().map(|(w, _, _)| *w).max().unwrap_or(0);
         let block_h_offset = line_glyphs
             .iter()
-            .map(|(_, _, gs)| gs)
-            .flatten()
+            .flat_map(|(_, _, gs)| gs)
             .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.y).unwrap_or(0))
             .max()
             .unwrap_or(0);
         let block_h = line_glyphs
             .iter()
-            .map(|(_, _, gs)| gs)
-            .flatten()
+            .flat_map(|(_, _, gs)| gs)
             .map(|g| g.pixel_bounding_box().map(|bb| bb.max.y + 1).unwrap_or(0) + block_h_offset)
             .max()
             .unwrap_or(0) as usize;
