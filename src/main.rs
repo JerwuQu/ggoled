@@ -5,6 +5,7 @@ use rusttype::{point, Font, Scale};
 use std::{
     io::Read,
     ops::Div,
+    str::FromStr,
     time::{Duration, SystemTime},
 };
 
@@ -106,8 +107,18 @@ impl Bitmap {
     }
 }
 impl Drawable {
-    fn from_bitmap(bitmap: Bitmap, x: usize, y: usize) -> Drawable {
-        Drawable { x, y, bitmap }
+    fn from_bitmap(bitmap: Bitmap, x: DrawPos, y: DrawPos) -> Drawable {
+        Drawable {
+            x: match x {
+                DrawPos::Coord(p) => p as usize, // TODO: support negative coords
+                DrawPos::Center => (SCREEN_WIDTH - bitmap.w) / 2,
+            },
+            y: match y {
+                DrawPos::Coord(p) => p as usize, // TODO: support negative coords
+                DrawPos::Center => (SCREEN_HEIGHT - bitmap.h) / 2,
+            },
+            bitmap,
+        }
     }
     fn rect(x: usize, y: usize, w: usize, h: usize, on: bool) -> Drawable {
         Drawable {
@@ -186,13 +197,31 @@ impl Drawable {
     }
 }
 
+#[derive(Clone, Copy)]
+enum DrawPos {
+    Coord(i32),
+    Center,
+}
+impl FromStr for DrawPos {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<i32>().map(|n| Ok(DrawPos::Coord(n))).unwrap_or_else(|_| {
+            if ["center", "c", "middle", "m"].contains(&s) {
+                Ok(DrawPos::Center)
+            } else {
+                Err("not a valid position")
+            }
+        })
+    }
+}
+
 #[derive(clap::Args)]
 struct DrawArgs {
     #[arg(short = 'x', long, help = "Screen X offset for draw commands", default_value = "0")]
-    screen_x: usize,
+    screen_x: DrawPos,
 
     #[arg(short = 'y', long, help = "Screen Y offset for draw commands", default_value = "0")]
-    screen_y: usize,
+    screen_y: DrawPos,
 
     #[arg(
         short = 'C',
