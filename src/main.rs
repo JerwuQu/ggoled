@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use core::str;
 use image::io::Reader as ImageReader;
 use rusttype::{point, Font, Scale};
@@ -52,7 +52,7 @@ impl Bitmap {
                 .collect::<Vec<bool>>(),
         }
     }
-    fn from_text(text: &str) -> Bitmap {
+    fn from_text(text: &str, alignment: Alignment) -> Bitmap {
         // initially based on https://github.com/redox-os/rusttype/blob/c1e820b4418c0bfad9bf8753acbb90e872408a6e/dev/examples/image.rs#L4
         let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
         let scale = Scale::uniform(16.0);
@@ -60,41 +60,62 @@ impl Bitmap {
         let lines = clean_text.split('\n');
         let v_metrics = font.v_metrics(scale);
         let line_h = (v_metrics.ascent - v_metrics.descent).ceil();
-        let glyphs: Vec<_> = lines
+        let line_glyphs: Vec<_> = lines
             .enumerate()
-            .flat_map(|(yi, line)| font.layout(line, scale, point(0.0, yi as f32 * line_h)))
+            .map(|(yi, line)| {
+                let glyphs: Vec<_> = font.layout(line, scale, point(0.0, yi as f32 * line_h)).collect();
+                let line_w_offset = glyphs
+                    .iter()
+                    .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.x).unwrap_or(0))
+                    .max()
+                    .unwrap_or(0);
+                let line_w = glyphs
+                    .iter()
+                    .map(|g| g.pixel_bounding_box().map(|bb| bb.max.x + 1).unwrap_or(0) + line_w_offset)
+                    .max()
+                    .unwrap_or(0) as usize;
+                (line_w, line_w_offset, glyphs)
+            })
             .collect();
-        let w_offset = glyphs
+        let block_w = line_glyphs.iter().map(|(w, _, _)| *w).max().unwrap_or(0);
+        let block_h_offset = line_glyphs
             .iter()
-            .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.x).unwrap_or(0))
-            .max()
-            .unwrap_or(0);
-        let h_offset = glyphs
-            .iter()
+            .map(|(_, _, gs)| gs)
+            .flatten()
             .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.y).unwrap_or(0))
             .max()
             .unwrap_or(0);
-        let w = glyphs
+        let block_h = line_glyphs
             .iter()
-            .map(|g| g.pixel_bounding_box().map(|bb| bb.max.x + 1).unwrap_or(0) + w_offset)
+            .map(|(_, _, gs)| gs)
+            .flatten()
+            .map(|g| g.pixel_bounding_box().map(|bb| bb.max.y + 1).unwrap_or(0) + block_h_offset)
             .max()
             .unwrap_or(0) as usize;
-        let h = glyphs
-            .iter()
-            .map(|g| g.pixel_bounding_box().map(|bb| bb.max.y + 1).unwrap_or(0) + h_offset)
-            .max()
-            .unwrap_or(0) as usize;
-        let mut pixels = vec![false; w * h];
-        for glyph in glyphs {
-            if let Some(bb) = glyph.pixel_bounding_box() {
-                glyph.draw(|x, y, v| {
-                    let px = (x as i32 + bb.min.x) as usize;
-                    let py = (y as i32 + h_offset + bb.min.y) as usize;
-                    pixels[py * w + px] = v > 0.5;
-                })
+        let mut pixels = vec![false; block_w * block_h];
+        for (line_w, line_w_offset, glyphs) in line_glyphs {
+            for glyph in glyphs {
+                if let Some(bb) = glyph.pixel_bounding_box() {
+                    glyph.draw(|x, y, v| {
+                        if v > 0.5 {
+                            let x_offset = match alignment {
+                                Alignment::Left => 0,
+                                Alignment::Center => (block_w - line_w) / 2,
+                                Alignment::Right => block_w - line_w,
+                            } as i32;
+                            let px = (x as i32 + line_w_offset + bb.min.x + x_offset) as usize;
+                            let py = (y as i32 + block_h_offset + bb.min.y) as usize;
+                            pixels[py * block_w + px] = true;
+                        }
+                    })
+                }
             }
         }
-        Bitmap { w, h, pixels }
+        Bitmap {
+            w: block_w,
+            h: block_h,
+            pixels,
+        }
     }
     fn crop(&self, x: usize, y: usize, w: usize, h: usize) -> Bitmap {
         let mut pixels = Vec::<bool>::with_capacity(w * h);
@@ -212,13 +233,23 @@ impl FromStr for DrawPos {
     type Err = &'static str;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.parse::<isize>().map(|n| Ok(DrawPos::Coord(n))).unwrap_or_else(|_| {
-            if ["center", "c", "middle", "m"].contains(&s) {
+            if ["center", "c", "middle", "m"].contains(&s.to_lowercase().as_str()) {
                 Ok(DrawPos::Center)
             } else {
                 Err("not a valid position")
             }
         })
     }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum Alignment {
+    #[value(alias("l"))]
+    Left,
+    #[value(alias("c"))]
+    Center,
+    #[value(alias("r"))]
+    Right,
 }
 
 #[derive(clap::Args)]
@@ -270,10 +301,12 @@ enum Args {
 
         #[arg(help = "Text, or omitted for stdin", index = 1)]
         text: Option<String>,
+
+        #[arg(short = 'a', help = "Text alignment", default_value = "left")]
+        alignment: Alignment,
         //
         // TODO: custom font
         // TODO: font size
-        // TODO: alignment (left/center/right)
         // TODO: some way to update text from stdin without re-invoking the command
     },
 
@@ -335,7 +368,11 @@ fn main() {
     match args {
         Args::Clear => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, false), false),
         Args::Fill => draw(&dev, &Drawable::rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, true), false),
-        Args::Text { text, draw_args } => {
+        Args::Text {
+            text,
+            draw_args,
+            alignment,
+        } => {
             let text = text.unwrap_or_else(|| {
                 let mut buf = Vec::<u8>::new();
                 std::io::stdin()
@@ -343,7 +380,7 @@ fn main() {
                     .expect("Failed to read from stdin");
                 String::from_utf8(buf).unwrap()
             });
-            let bitmap = Bitmap::from_text(&text);
+            let bitmap = Bitmap::from_text(&text, alignment);
             let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
             draw(&dev, &drawable, draw_args.clear);
         }
