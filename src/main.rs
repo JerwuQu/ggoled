@@ -302,7 +302,7 @@ enum Args {
         #[arg(help = "Text, or omitted for stdin", index = 1)]
         text: Option<String>,
 
-        #[arg(short = 'a', help = "Text alignment", default_value = "left")]
+        #[arg(short = 'a', long, help = "Text alignment", default_value = "left")]
         alignment: Alignment,
         //
         // TODO: custom font
