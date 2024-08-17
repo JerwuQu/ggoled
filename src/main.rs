@@ -21,8 +21,8 @@ struct Bitmap {
     pixels: Vec<bool>,
 }
 struct Drawable {
-    x: usize,
-    y: usize,
+    x: i32,
+    y: i32,
     bitmap: Bitmap,
 }
 impl Bitmap {
@@ -33,11 +33,13 @@ impl Bitmap {
             pixels: (0..(w as usize) * (h as usize)).map(|_| on).collect::<Vec<bool>>(),
         }
     }
-    fn get(&self, x: usize, y: usize) -> bool {
-        self.pixels[y * self.w + x]
+    fn get(&self, x: i32, y: i32) -> bool {
+        x >= 0 && y >= 0 && x < self.w as i32 && y < self.h as i32 && self.pixels[y as usize * self.w + x as usize]
     }
-    fn set(&mut self, x: usize, y: usize, on: bool) {
-        self.pixels[y * self.w + x] = on;
+    fn set(&mut self, x: i32, y: i32, on: bool) {
+        if x >= 0 && y >= 0 && x < self.w as i32 && y < self.h as i32 {
+            self.pixels[y as usize * self.w + x as usize] = on;
+        }
     }
     fn from_image(img: &image::DynamicImage, threshold: usize) -> Bitmap {
         Bitmap {
@@ -110,17 +112,17 @@ impl Drawable {
     fn from_bitmap(bitmap: Bitmap, x: DrawPos, y: DrawPos) -> Drawable {
         Drawable {
             x: match x {
-                DrawPos::Coord(p) => p as usize, // TODO: support negative coords
-                DrawPos::Center => (SCREEN_WIDTH - bitmap.w) / 2,
+                DrawPos::Coord(p) => p,
+                DrawPos::Center => (SCREEN_WIDTH as i32 - bitmap.w as i32) / 2,
             },
             y: match y {
-                DrawPos::Coord(p) => p as usize, // TODO: support negative coords
-                DrawPos::Center => (SCREEN_HEIGHT - bitmap.h) / 2,
+                DrawPos::Coord(p) => p,
+                DrawPos::Center => (SCREEN_HEIGHT as i32 - bitmap.h as i32) / 2,
             },
             bitmap,
         }
     }
-    fn rect(x: usize, y: usize, w: usize, h: usize, on: bool) -> Drawable {
+    fn rect(x: i32, y: i32, w: usize, h: usize, on: bool) -> Drawable {
         Drawable {
             x,
             y,
@@ -128,20 +130,26 @@ impl Drawable {
         }
     }
     fn crop_to_screen(&self) -> Drawable {
-        let x = std::cmp::min(SCREEN_WIDTH - 1, self.x);
-        let y = std::cmp::min(SCREEN_HEIGHT - 1, self.y);
-        let w = std::cmp::min(SCREEN_WIDTH - x, self.bitmap.w);
-        let h = std::cmp::min(SCREEN_HEIGHT - y, self.bitmap.h);
+        let x = std::cmp::min(SCREEN_WIDTH - 1, std::cmp::max(0, self.x) as usize) as i32;
+        let y = std::cmp::min(SCREEN_HEIGHT - 1, std::cmp::max(0, self.y) as usize) as i32;
+        let w = std::cmp::min(SCREEN_WIDTH - x as usize, self.bitmap.w);
+        let h = std::cmp::min(SCREEN_HEIGHT - y as usize, self.bitmap.h);
+        let x_crop = (-std::cmp::min(0, self.x)) as usize;
+        let y_crop = (-std::cmp::min(0, self.y)) as usize;
         Drawable {
             x,
             y,
-            bitmap: self.bitmap.crop(0, 0, w, h),
+            bitmap: self.bitmap.crop(x_crop, y_crop, w - x_crop, h - y_crop),
         }
     }
     fn blit(&mut self, other: &Drawable) {
         for bx in 0..other.bitmap.w {
             for by in 0..other.bitmap.h {
-                self.bitmap.set(other.x + bx, other.y + by, other.bitmap.get(bx, by));
+                self.bitmap.set(
+                    other.x + bx as i32,
+                    other.y + by as i32,
+                    other.bitmap.get(bx as i32, by as i32),
+                );
             }
         }
     }
@@ -183,7 +191,7 @@ impl Drawable {
         let splits = self.bitmap.w.div_ceil(REPORT_SPLIT_SZ);
         for i in 0..splits {
             vec.push(Drawable {
-                x: self.x + i * REPORT_SPLIT_SZ,
+                x: self.x + (i * REPORT_SPLIT_SZ) as i32,
                 y: self.y,
                 bitmap: self.bitmap.crop(
                     i * REPORT_SPLIT_SZ,
