@@ -30,7 +30,7 @@ impl Bitmap {
         Bitmap {
             w,
             h,
-            pixels: (0..(w as usize) * (h as usize)).map(|_| on).collect::<Vec<bool>>(),
+            pixels: (0..w * h).map(|_| on).collect::<Vec<bool>>(),
         }
     }
     fn get(&self, x: isize, y: isize) -> bool {
@@ -97,12 +97,10 @@ impl Bitmap {
         Bitmap { w, h, pixels }
     }
     fn crop(&self, x: usize, y: usize, w: usize, h: usize) -> Bitmap {
-        let mut pixels = Vec::<bool>::with_capacity((w as usize) * (h as usize));
+        let mut pixels = Vec::<bool>::with_capacity(w * h);
         for ny in 0..h {
             for nx in 0..w {
-                pixels.push(
-                    self.pixels[((ny as usize) + (y as usize)) * (self.w as usize) + ((nx as usize) + (x as usize))],
-                );
+                pixels.push(self.pixels[(ny + y) * self.w + (nx + x)]);
             }
         }
         Bitmap { w, h, pixels }
@@ -162,10 +160,10 @@ impl Drawable {
         let mut report: DrawReport = [0; REPORT_SIZE];
         // TODO: figure out the actual limits for a single report
         if !((self.bitmap.w <= REPORT_SPLIT_SZ && self.bitmap.h <= REPORT_SPLIT_SZ)
-            || ((self.bitmap.w as usize) * (self.bitmap.h as usize) <= 1024))
+            || (self.bitmap.w * self.bitmap.h <= 1024))
         {
             panic!("bitmap too large for one report");
-        } else if self.bitmap.pixels.len() < (self.bitmap.w as usize) * (self.bitmap.h as usize) {
+        } else if self.bitmap.pixels.len() < self.bitmap.w * self.bitmap.h {
             panic!("pixels.len smaller than w*h");
         }
         report[0] = 0x06; // hid report id
@@ -179,8 +177,8 @@ impl Drawable {
         for y in 0..self.bitmap.h {
             for x in 0..self.bitmap.w {
                 // NOTE: report has columns rather than rows
-                let ri = (x as usize) * (stride_h as usize) + (y as usize);
-                let pi = (y as usize) * (self.bitmap.w as usize) + (x as usize);
+                let ri = x * stride_h + y;
+                let pi = y * self.bitmap.w + x;
                 report[(ri / 8) + 6] |= (self.bitmap.pixels[pi] as u8) << (ri % 8);
             }
         }
