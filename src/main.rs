@@ -3,7 +3,7 @@ use core::str;
 use image::io::Reader as ImageReader;
 use rusttype::{point, Font, Scale};
 use std::{
-    io::Read,
+    io::{stdin, Read},
     ops::Div,
     str::FromStr,
     time::{Duration, SystemTime},
@@ -303,10 +303,12 @@ enum Args {
 
         #[arg(short = 'a', long, help = "Text alignment", default_value = "left")]
         alignment: Alignment,
+
+        #[arg(short = 'd', long, help = "Screen delimiter line for stdin input")]
+        delimiter: Option<String>,
         //
         // TODO: custom font
         // TODO: font size
-        // TODO: some way to update text from stdin without re-invoking the command (perhaps split by NUL char)
         // TODO: text scrolling (whole block or individual lines?) (may be jank)
     },
 
@@ -372,25 +374,38 @@ fn main() {
             text,
             draw_args,
             alignment,
+            delimiter,
         } => {
-            let text = text.unwrap_or_else(|| {
-                let mut buf = Vec::<u8>::new();
-                std::io::stdin()
-                    .read_to_end(&mut buf)
-                    .expect("Failed to read from stdin");
-                String::from_utf8(buf).unwrap()
-            });
-            let bitmap = Bitmap::from_text(&text, alignment);
-            let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
-            draw(&dev, &drawable, draw_args.clear);
+            let set_text = |text: &str| {
+                let bitmap = Bitmap::from_text(&text, alignment);
+                let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
+                draw(&dev, &drawable, draw_args.clear);
+            };
+            if let Some(text) = text {
+                // draw text to screen directly
+                set_text(&text);
+            } else {
+                // iterate each line in stdin and draw to screen either when reaching EOF or when encountering `delimiter`
+                let mut lines = vec![];
+                for line in stdin().lines() {
+                    let line = line.expect("Failed to read from stdin").replace('\r', "");
+                    if Some(&line) == delimiter.as_ref() {
+                        set_text(&lines.join("\n"));
+                        lines.clear();
+                    } else {
+                        lines.push(line);
+                    }
+                }
+                if lines.len() > 0 {
+                    set_text(&lines.join("\n"));
+                }
+            }
         }
         Args::Img { path, image_args } => {
             let draw_args = &image_args.draw_args;
             let img = if path == "-" {
                 let mut buf = Vec::<u8>::new();
-                std::io::stdin()
-                    .read_to_end(&mut buf)
-                    .expect("Failed to read from stdin");
+                stdin().read_to_end(&mut buf).expect("Failed to read from stdin");
                 image::load_from_memory(&buf).expect("Failed to load image from stdin")
             } else {
                 ImageReader::open(path)
