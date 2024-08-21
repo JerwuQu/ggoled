@@ -52,44 +52,43 @@ impl Bitmap {
                 .collect::<Vec<bool>>(),
         }
     }
+    // initially based on https://github.com/redox-os/rusttype/blob/c1e820b4418c0bfad9bf8753acbb90e872408a6e/dev/examples/image.rs#L4
     fn from_text(text: &str, alignment: Alignment) -> Bitmap {
-        // initially based on https://github.com/redox-os/rusttype/blob/c1e820b4418c0bfad9bf8753acbb90e872408a6e/dev/examples/image.rs#L4
-        let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
-        let scale = Scale::uniform(16.0);
         let clean_text = text.replace('\r', "");
-        let lines = clean_text.split('\n');
+        let text_lines = clean_text.split('\n');
+
+        let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
+
+        let scale = Scale::uniform(16.0);
         let v_metrics = font.v_metrics(scale);
         let line_h = (v_metrics.ascent - v_metrics.descent).ceil();
-        let line_glyphs: Vec<_> = lines
-            .enumerate()
-            .map(|(yi, line)| {
-                let glyphs: Vec<_> = font.layout(line, scale, point(0.0, yi as f32 * line_h)).collect();
-                let line_w_offset = glyphs
-                    .iter()
-                    .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.x).unwrap_or(0))
-                    .max()
-                    .unwrap_or(0);
-                let line_w = glyphs
-                    .iter()
-                    .map(|g| g.pixel_bounding_box().map(|bb| bb.max.x + 1).unwrap_or(0) + line_w_offset)
-                    .max()
-                    .unwrap_or(0) as usize;
-                (line_w, line_w_offset, glyphs)
-            })
-            .collect();
-        let block_w = line_glyphs.iter().map(|(w, _, _)| *w).max().unwrap_or(0);
-        let block_h_offset = line_glyphs
-            .iter()
-            .flat_map(|(_, _, gs)| gs)
-            .map(|g| -g.pixel_bounding_box().map(|bb| bb.min.y).unwrap_or(0))
-            .max()
-            .unwrap_or(0);
-        let block_h = line_glyphs
-            .iter()
-            .flat_map(|(_, _, gs)| gs)
-            .map(|g| g.pixel_bounding_box().map(|bb| bb.max.y + 1).unwrap_or(0) + block_h_offset)
-            .max()
-            .unwrap_or(0) as usize;
+
+        // collect all glyphs for each line of text and calculate bounds
+        let mut line_glyphs = vec![];
+        let mut block_w = 0;
+        let mut block_h_offset = 0;
+        let mut block_h = 0;
+        for (yi, text_line) in text_lines.enumerate() {
+            let glyphs: Vec<_> = font.layout(text_line, scale, point(0.0, yi as f32 * line_h)).collect();
+
+            let mut line_w_offset = 0;
+            let mut line_w = 0;
+            for bb in glyphs.iter().filter_map(|g| g.pixel_bounding_box()) {
+                line_w_offset = line_w_offset.max(-bb.min.x);
+                line_w = line_w.max(bb.max.x + 1);
+                block_h_offset = block_h_offset.max(-bb.min.y);
+                block_h = block_h.max(bb.max.y + 1);
+            }
+            line_w += line_w_offset;
+            line_glyphs.push((line_w as usize, line_w_offset, glyphs));
+
+            block_w = block_w.max(line_w);
+        }
+        block_h += block_h_offset;
+        let block_w = block_w as usize;
+        let block_h = block_h as usize;
+
+        // blit all the glyphs onto a bitmap
         let mut pixels = vec![false; block_w * block_h];
         for (line_w, line_w_offset, glyphs) in line_glyphs {
             for glyph in glyphs {
@@ -267,6 +266,8 @@ struct DrawArgs {
     clear: bool,
     //
     // TODO: invert
+    // TODO: autorefresh: redraw screen every ~3 seconds
+    // TODO: oled screensaver: randomly change offset by ~2 pixels when drawing (may be janky)
 }
 
 #[derive(clap::Args)]
@@ -305,7 +306,8 @@ enum Args {
         //
         // TODO: custom font
         // TODO: font size
-        // TODO: some way to update text from stdin without re-invoking the command
+        // TODO: some way to update text from stdin without re-invoking the command (perhaps split by NUL char)
+        // TODO: text scrolling (whole block or individual lines?) (may be jank)
     },
 
     #[command(about = "Draw an image")]

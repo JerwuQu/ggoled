@@ -31,8 +31,8 @@ PRs and issues for similar devices are welcome!
 
 ## Install
 
-For Windows you can download the latest build `master` branch build either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
+For Windows you can download the latest build either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
 
 Otherwise, install the Rust toolchain and run: `cargo install --git https://github.com/JerwuQu/ggoled.git`
 
-To run without root on linux you need to copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/` and run `udevadm control --reload` and `udevadm trigger` as root.
+To run without root on linux you'll first need to copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/` and run `udevadm control --reload` and `udevadm trigger` as root.
