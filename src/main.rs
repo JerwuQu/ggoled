@@ -145,6 +145,7 @@ impl Drawable {
             bitmap: Bitmap::new(w, h, on),
         }
     }
+    // TODO: this seems to handle negative x/y incorrectly
     fn crop_to_screen(&self) -> Drawable {
         let x = std::cmp::min(SCREEN_WIDTH - 1, std::cmp::max(0, self.x) as usize) as isize;
         let y = std::cmp::min(SCREEN_HEIGHT - 1, std::cmp::max(0, self.y) as usize) as isize;
@@ -415,7 +416,7 @@ fn main() {
             };
             let bitmap = Bitmap::from_image(&img, image_args.threshold);
             let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
-            draw(&dev, &drawable, false);
+            draw(&dev, &drawable, draw_args.clear);
         }
         Args::Anim {
             framerate,
