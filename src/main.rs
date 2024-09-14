@@ -3,6 +3,7 @@ use core::str;
 use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
 use rusttype::{point, Font, Scale};
 use std::{
+    cmp::{max, min},
     io::{stdin, Read},
     ops::Div,
     str::FromStr,
@@ -147,18 +148,19 @@ impl Drawable {
             bitmap: Bitmap::new(w, h, on),
         }
     }
-    // TODO: this seems to handle negative x/y incorrectly
     fn crop_to_screen(&self) -> Drawable {
-        let x = std::cmp::min(SCREEN_WIDTH - 1, std::cmp::max(0, self.x) as usize) as isize;
-        let y = std::cmp::min(SCREEN_HEIGHT - 1, std::cmp::max(0, self.y) as usize) as isize;
-        let w = std::cmp::min(SCREEN_WIDTH - x as usize, self.bitmap.w);
-        let h = std::cmp::min(SCREEN_HEIGHT - y as usize, self.bitmap.h);
-        let x_crop = (-std::cmp::min(0, self.x)) as usize;
-        let y_crop = (-std::cmp::min(0, self.y)) as usize;
+        let src_x = max(-self.x, 0) as usize;
+        let src_y = max(-self.y, 0) as usize;
+        let dst_x = min(SCREEN_WIDTH - 1, max(self.x, 0) as usize);
+        let dst_y = min(SCREEN_HEIGHT - 1, max(self.y, 0) as usize);
+        let dst_w = min(self.bitmap.w, max(0, SCREEN_WIDTH as isize - dst_x as isize) as usize);
+        let dst_h = min(self.bitmap.h, max(0, SCREEN_HEIGHT as isize - dst_y as isize) as usize);
+        let src_w = min(dst_w, max(0, self.bitmap.w as isize - src_x as isize) as usize);
+        let src_h = min(dst_h, max(0, self.bitmap.h as isize - src_y as isize) as usize);
         Drawable {
-            x,
-            y,
-            bitmap: self.bitmap.crop(x_crop, y_crop, w - x_crop, h - y_crop),
+            x: dst_x as isize,
+            y: dst_y as isize,
+            bitmap: self.bitmap.crop(src_x, src_y, src_w, src_h),
         }
     }
     fn blit(&mut self, other: &Drawable) {
@@ -215,7 +217,7 @@ impl Drawable {
                 bitmap: self.bitmap.crop(
                     i * REPORT_SPLIT_SZ,
                     0,
-                    std::cmp::min(REPORT_SPLIT_SZ, self.bitmap.w - i * REPORT_SPLIT_SZ),
+                    min(REPORT_SPLIT_SZ, self.bitmap.w - i * REPORT_SPLIT_SZ),
                     self.bitmap.h,
                 ),
             });
