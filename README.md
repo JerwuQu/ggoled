@@ -27,6 +27,7 @@ PRs and issues for similar devices are welcome!
 - `ggoled text "Hello, World!"`: draw some text onto your display.
 - `ggoled img cool_image.png`: draw an image onto your display.
 - `ggoled anim -r 10 -l 20 frame1.png frame2.png frame3.png`: play an animation at 10 fps, looped 20 times.
+- `ggoled anim animation.gif`: play a gif animation.
 - See `ggoled --help` for more commands and flags.
 
 ## Install
