@@ -1,6 +1,6 @@
 use clap::{Parser, ValueEnum};
 use core::str;
-use image::io::Reader as ImageReader;
+use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
 use rusttype::{point, Font, Scale};
 use std::{
     io::{stdin, Read},
@@ -41,16 +41,18 @@ impl Bitmap {
             self.pixels[y as usize * self.w + x as usize] = on;
         }
     }
-    fn from_image(img: &image::DynamicImage, threshold: usize) -> Bitmap {
+    fn from_image(img: &image::RgbaImage, threshold: usize) -> Bitmap {
         Bitmap {
             w: img.width() as usize,
             h: img.height() as usize,
             pixels: img
-                .to_rgb8()
                 .pixels()
                 .map(|p| ((p.0[0] as usize) + (p.0[1] as usize) + (p.0[2] as usize)) / 3 >= threshold)
                 .collect::<Vec<bool>>(),
         }
+    }
+    fn from_dynimage(img: &image::DynamicImage, threshold: usize) -> Bitmap {
+        Self::from_image(&img.to_rgba8(), threshold)
     }
     // initially based on https://github.com/redox-os/rusttype/blob/c1e820b4418c0bfad9bf8753acbb90e872408a6e/dev/examples/image.rs#L4
     fn from_text(text: &str, alignment: Alignment) -> Bitmap {
@@ -327,8 +329,12 @@ enum Args {
         #[command(flatten)]
         image_args: ImageArgs,
 
-        #[arg(short = 'r', long, help = "Frames to show per second (fps)", default_value = "1")]
-        framerate: u32,
+        #[arg(
+            short = 'r',
+            long,
+            help = "Frames to show per second (fps) - defaults to 1 fps or embedded delays for gif files"
+        )]
+        framerate: Option<u32>,
 
         #[arg(
             short = 'l',
@@ -348,6 +354,30 @@ fn draw(dev: &hidapi::HidDevice, drawable: &Drawable, clear: bool) {
     let drawable = if clear { drawable.with_clear() } else { drawable };
     for d in drawable.split_for_reports() {
         dev.send_feature_report(&d.as_hid_report()).unwrap();
+    }
+}
+
+fn decode_frames(path: &str, image_args: &ImageArgs, draw_args: &DrawArgs) -> Vec<(Drawable, Option<Duration>)> {
+    let reader = ImageReader::open(path).expect("Failed to open image");
+    if matches!(reader.format().unwrap(), ImageFormat::Gif) {
+        let gif = GifDecoder::new(reader.into_inner()).expect("Failed to decode gif");
+        let frames = gif.into_frames();
+        frames
+            .map(|frame| {
+                let frame = frame.expect("Failed to decode gif frame");
+                let bitmap = Bitmap::from_image(frame.buffer(), image_args.threshold);
+                let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
+                (
+                    drawable,
+                    Some(Duration::from_millis(frame.delay().numer_denom_ms().0 as u64)),
+                )
+            })
+            .collect()
+    } else {
+        let img = reader.decode().expect("Failed to decode image");
+        let bitmap = Bitmap::from_dynimage(&img, image_args.threshold);
+        let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
+        vec![(drawable, None)]
     }
 }
 
@@ -404,18 +434,19 @@ fn main() {
         }
         Args::Img { path, image_args } => {
             let draw_args = &image_args.draw_args;
-            let img = if path == "-" {
+            let drawable = if path == "-" {
                 let mut buf = Vec::<u8>::new();
                 stdin().read_to_end(&mut buf).expect("Failed to read from stdin");
-                image::load_from_memory(&buf).expect("Failed to load image from stdin")
+                let img = image::load_from_memory(&buf).expect("Failed to load image from stdin");
+                let bitmap = Bitmap::from_dynimage(&img, image_args.threshold);
+                Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen()
             } else {
-                ImageReader::open(path)
-                    .expect("Failed to open image")
-                    .decode()
-                    .expect("Failed to decode image")
+                let mut frames = decode_frames(&path, &image_args, &draw_args);
+                if frames.len() != 1 {
+                    eprintln!("img only supports images with single frame");
+                }
+                frames.swap_remove(0).0
             };
-            let bitmap = Bitmap::from_image(&img, image_args.threshold);
-            let drawable = Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen();
             draw(&dev, &drawable, draw_args.clear);
         }
         Args::Anim {
@@ -425,35 +456,33 @@ fn main() {
             image_args,
         } => {
             let draw_args = &image_args.draw_args;
-            if framerate == 0 {
+            if framerate == Some(0) {
                 panic!("Framerate must be non-zero");
             } else if paths.is_empty() {
                 panic!("No image paths");
             }
-            let drawables: Vec<Drawable> = paths
+            let period = framerate.map(|f| Duration::from_secs(1).div(f));
+            let drawables: Vec<(Drawable, Duration)> = paths
                 .iter()
-                .map(|path| {
-                    let img = ImageReader::open(path)
-                        .expect("Failed to open image")
-                        .decode()
-                        .expect("Failed to decode image");
-                    let bitmap = Bitmap::from_image(&img, image_args.threshold);
-                    Drawable::from_bitmap(bitmap, draw_args.screen_x, draw_args.screen_y).crop_to_screen()
+                .flat_map(|path| {
+                    decode_frames(&path, &image_args, &draw_args)
+                        .into_iter()
+                        .map(|(f, d)| (f, period.unwrap_or(d.unwrap_or(Duration::from_secs(1)))))
                 })
                 .collect();
-            let draw_animation = || {
-                let period = Duration::from_secs(1).div(framerate);
-                let mut next_frame = SystemTime::now() + period;
-                draw(&dev, &drawables[0], draw_args.clear);
-                for drawable in drawables.iter().skip(1) {
-                    let time = SystemTime::now();
-                    if time < next_frame {
-                        std::thread::sleep(next_frame.duration_since(time).unwrap());
+            let mut frame_idx = 0;
+            let mut draw_animation = || {
+                for (drawable, delay) in &drawables {
+                    let now_time = SystemTime::now();
+                    let next_frame = now_time + *delay;
+                    // TODO: handle clear properly when animation has varying image sizes
+                    draw(&dev, drawable, frame_idx == 0);
+                    frame_idx += 1;
+                    if now_time < next_frame {
+                        std::thread::sleep(next_frame.duration_since(SystemTime::now()).unwrap());
                     } else {
                         println!("fell behind - framerate too fast");
                     }
-                    draw(&dev, drawable, false);
-                    next_frame += period;
                 }
             };
             if loops == 0 {
