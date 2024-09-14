@@ -478,7 +478,7 @@ fn main() {
                     let now_time = SystemTime::now();
                     let next_frame = now_time + *delay;
                     // TODO: handle clear properly when animation has varying image sizes
-                    draw(&dev, drawable, frame_idx == 0);
+                    draw(&dev, drawable, frame_idx == 0 && image_args.draw_args.clear);
                     frame_idx += 1;
                     if now_time < next_frame {
                         std::thread::sleep(next_frame.duration_since(SystemTime::now()).unwrap());
