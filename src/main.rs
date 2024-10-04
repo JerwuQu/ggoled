@@ -6,10 +6,13 @@ use clap::{command, Parser, ValueEnum};
 use core::str;
 use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
 use rusttype::{point, Font, Scale};
+use spin_sleep::sleep;
 use std::{
+    cmp::{max, min},
     io::{stdin, Read},
     ops::Div,
     str::FromStr,
+    sync::mpsc::channel,
     time::{Duration, SystemTime},
 };
 
@@ -289,30 +292,98 @@ fn main() {
             delimiter,
             scroll,
         } => {
-            let rnd = TextRenderer::new();
-            let set_text = |text: &str| {
-                let bitmap = rnd.render(text, alignment);
-                draw_with_args(&dev, &bitmap, &draw_args);
+            let (ch_send, ch_recv) = channel::<Option<String>>();
+            let animate = scroll.is_some();
+            let animate_wait = scroll.map(|s| match s {
+                ScrollSpeed::Slow => Duration::from_millis(100),
+                ScrollSpeed::Normal => Duration::from_millis(50),
+                ScrollSpeed::Fast => Duration::from_millis(20),
+            });
+            let text_thread_fn = move || {
+                let rnd = TextRenderer::new();
+                if animate {
+                    let mut current_bitmap: Option<Bitmap> = None;
+                    let mut current_x: isize = 0;
+                    let mut start_x: isize = 0;
+                    let mut end_x: isize = 0;
+                    let mut first_draw = false;
+                    const X_WAIT: isize = 10; // used for hack to wait at start and end
+                    loop {
+                        match ch_recv.try_recv() {
+                            Ok(Some(text)) => {
+                                let bitmap = rnd.render(&text, alignment);
+                                let margin_x = match draw_args.screen_x {
+                                    DrawPos::Coord(x) => {
+                                        start_x = x;
+                                        x
+                                    }
+                                    DrawPos::Center => {
+                                        start_x = max(0, (dev.width as isize - bitmap.w as isize) / 2);
+                                        0
+                                    }
+                                };
+                                end_x = min(start_x, (dev.width as isize - margin_x) - bitmap.w as isize);
+                                current_x = start_x + X_WAIT;
+                                current_bitmap = Some(bitmap);
+                                first_draw = true;
+                            }
+                            Ok(None) => {
+                                break;
+                            }
+                            Err(_) => {} // no data
+                        }
+                        if let Some(bitmap) = &current_bitmap {
+                            let last_x = current_x;
+                            current_x -= 1;
+                            if current_x <= end_x - X_WAIT {
+                                current_x = start_x + X_WAIT;
+                            }
+                            if current_x != last_x || first_draw {
+                                draw_with_args(
+                                    &dev,
+                                    bitmap,
+                                    &DrawArgs {
+                                        screen_x: DrawPos::Coord(max(min(current_x, start_x), end_x)),
+                                        ..draw_args
+                                    },
+                                );
+                                first_draw = false;
+                            }
+                        }
+                        sleep(animate_wait.unwrap());
+                    }
+                } else {
+                    while let Some(text) = ch_recv.recv().unwrap() {
+                        let bitmap = rnd.render(&text, alignment);
+                        draw_with_args(&dev, &bitmap, &draw_args);
+                    }
+                }
             };
+            let text_thread = std::thread::spawn(text_thread_fn);
             if let Some(text) = text {
                 // draw text to screen directly
-                set_text(&text);
+                ch_send.send(Some(text)).unwrap();
+                if !animate {
+                    ch_send.send(None).unwrap(); // stop thread if not animating
+                }
             } else {
                 // iterate each line in stdin and draw to screen either when reaching EOF or when encountering `delimiter`
                 let mut lines = vec![];
                 for line in stdin().lines() {
                     let line = line.expect("Failed to read from stdin").replace('\r', "");
                     if Some(&line) == delimiter.as_ref() {
-                        set_text(&lines.join("\n"));
+                        ch_send.send(Some(lines.join("\n"))).unwrap();
                         lines.clear();
                     } else {
                         lines.push(line);
                     }
                 }
                 if lines.len() > 0 {
-                    set_text(&lines.join("\n"));
+                    ch_send.send(Some(lines.join("\n"))).unwrap();
                 }
+                ch_send.send(None).unwrap(); // stop thread on EOF
             }
+            text_thread.join().unwrap();
         }
         Args::Img { path, image_args } => {
             let bitmap = if path == "-" {
@@ -357,7 +428,7 @@ fn main() {
                     draw_with_args(&dev, &bitmap, &image_args.draw_args);
                     frame_idx += 1;
                     if now_time < next_frame {
-                        std::thread::sleep(next_frame.duration_since(SystemTime::now()).unwrap());
+                        sleep(next_frame.duration_since(SystemTime::now()).unwrap());
                     } else {
                         println!("fell behind - framerate too fast");
                     }
