@@ -274,12 +274,20 @@ name = "ggoled"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bit-vec",
  "clap",
- "hidapi",
+ "ggoled_lib",
  "image",
  "rusttype",
  "spin_sleep",
+]
+
+[[package]]
+name = "ggoled_lib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "hidapi",
 ]
 
 [[package]]

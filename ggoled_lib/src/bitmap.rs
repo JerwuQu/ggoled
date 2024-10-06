@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use bit_vec::BitVec;
+pub use bit_vec::BitVec;
 
 pub struct Bitmap {
     pub w: usize,

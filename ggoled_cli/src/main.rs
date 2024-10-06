@@ -1,9 +1,7 @@
-mod bitmap;
-mod gg;
-use bit_vec::BitVec;
-use bitmap::Bitmap;
 use clap::{command, Parser, ValueEnum};
 use core::str;
+use ggoled_lib::Bitmap;
+use ggoled_lib::{bitmap::BitVec, Device};
 use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
 use rusttype::{point, Font, Scale};
 use spin_sleep::sleep;
@@ -16,20 +14,18 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-impl Bitmap {
-    pub fn from_image(img: &image::RgbaImage, threshold: usize) -> Bitmap {
-        Bitmap {
-            w: img.width() as usize,
-            h: img.height() as usize,
-            data: img
-                .pixels()
-                .map(|p| ((p.0[0] as usize) + (p.0[1] as usize) + (p.0[2] as usize)) / 3 >= threshold)
-                .collect::<BitVec>(),
-        }
+pub fn bitmap_from_image(img: &image::RgbaImage, threshold: usize) -> Bitmap {
+    Bitmap {
+        w: img.width() as usize,
+        h: img.height() as usize,
+        data: img
+            .pixels()
+            .map(|p| ((p.0[0] as usize) + (p.0[1] as usize) + (p.0[2] as usize)) / 3 >= threshold)
+            .collect::<BitVec>(),
     }
-    pub fn from_dynimage(img: &image::DynamicImage, threshold: usize) -> Bitmap {
-        Self::from_image(&img.to_rgba8(), threshold)
-    }
+}
+pub fn bitmap_from_dynimage(img: &image::DynamicImage, threshold: usize) -> Bitmap {
+    bitmap_from_image(&img.to_rgba8(), threshold)
 }
 
 struct TextRenderer {
@@ -37,7 +33,7 @@ struct TextRenderer {
 }
 impl TextRenderer {
     pub fn new() -> Self {
-        let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
+        let font = Font::try_from_bytes(include_bytes!("../../fonts/PixelOperator.ttf")).unwrap();
         Self { font }
     }
     pub fn render(&self, text: &str, alignment: Alignment) -> Bitmap {
@@ -246,7 +242,7 @@ fn decode_frames(path: &str, image_args: &ImageArgs) -> Vec<(Bitmap, Option<Dura
         frames
             .map(|frame| {
                 let frame = frame.expect("Failed to decode gif frame");
-                let bitmap = Bitmap::from_image(frame.buffer(), image_args.threshold);
+                let bitmap = bitmap_from_image(frame.buffer(), image_args.threshold);
                 (
                     bitmap,
                     Some(Duration::from_millis(frame.delay().numer_denom_ms().0 as u64)),
@@ -255,12 +251,12 @@ fn decode_frames(path: &str, image_args: &ImageArgs) -> Vec<(Bitmap, Option<Dura
             .collect()
     } else {
         let img = reader.decode().expect("Failed to decode image");
-        let bitmap = Bitmap::from_dynimage(&img, image_args.threshold);
+        let bitmap = bitmap_from_dynimage(&img, image_args.threshold);
         vec![(bitmap, None)]
     }
 }
 
-fn draw_with_args(dev: &gg::Device, bitmap: &Bitmap, draw: &DrawArgs) {
+fn draw_with_args(dev: &Device, bitmap: &Bitmap, draw: &DrawArgs) {
     let x = match draw.screen_x {
         DrawPos::Coord(v) => v,
         DrawPos::Center => (dev.width as isize - bitmap.w as isize) / 2,
@@ -280,7 +276,7 @@ fn draw_with_args(dev: &gg::Device, bitmap: &Bitmap, draw: &DrawArgs) {
 
 fn main() {
     let args = Args::parse();
-    let dev = gg::Device::connect().unwrap();
+    let dev = Device::connect().unwrap();
 
     match args {
         Args::Clear => dev.draw(&Bitmap::new(dev.width, dev.height, false), 0, 0).unwrap(),
@@ -390,7 +386,7 @@ fn main() {
                 let mut buf = Vec::<u8>::new();
                 stdin().read_to_end(&mut buf).expect("Failed to read from stdin");
                 let img = image::load_from_memory(&buf).expect("Failed to load image from stdin");
-                Bitmap::from_dynimage(&img, image_args.threshold)
+                bitmap_from_dynimage(&img, image_args.threshold)
             } else {
                 let mut frames = decode_frames(&path, &image_args);
                 if frames.len() != 1 {

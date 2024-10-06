@@ -1,5 +1,6 @@
-use crate::bitmap::Bitmap;
+pub mod bitmap;
 use anyhow::bail;
+pub use bitmap::Bitmap;
 use hidapi::{HidApi, HidDevice};
 use std::cmp::min;
 
@@ -116,6 +117,7 @@ impl Device {
         vec
     }
 
+    /// Draw a `Bitmap` at the given location.
     pub fn draw(&self, bitmap: &Bitmap, x: isize, y: isize) -> anyhow::Result<()> {
         let drawables = self.prepare_for_report(bitmap, x, y);
         for drawable in drawables {
