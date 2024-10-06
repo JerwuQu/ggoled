@@ -1,0 +1,11 @@
+[package]
+name = "ggoled_draw"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.89"
+image = { version = "0.24.7", features = ["gif"] }
+rusttype = "0.9.3"
+spin_sleep = "1.2.1"
+ggoled_lib = { path = "../ggoled_lib" }
