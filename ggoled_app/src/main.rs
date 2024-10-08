@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use chrono::{Local, TimeDelta};
 use ggoled_draw::{DrawDevice, LayerId};
 use ggoled_lib::Device;
