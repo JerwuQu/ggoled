@@ -16,7 +16,7 @@ pub struct TextRenderer {
 }
 impl TextRenderer {
     pub fn new() -> Self {
-        let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
+        let font = Font::try_from_bytes(include_bytes!("../fonts/KH-Dot-Kodenmachou-16.ttf")).unwrap();
         Self { font }
     }
     fn scale() -> Scale {
