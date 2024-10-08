@@ -12,7 +12,8 @@ jobs:
         platform:
           - os: windows-latest
             target: x86_64-pc-windows-gnu
-            bin: ggoled.exe
+            cli: ggoled.exe
+            app: ggoled_app.exe
     runs-on: ${{ matrix.platform.os }}
     steps:
       - name: Checkout
@@ -34,5 +35,10 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.platform.target }}
-          path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+          name: ${{ matrix.platform.target }} CLI
+          path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.cli }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.platform.target }} App
+          path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.app }}
