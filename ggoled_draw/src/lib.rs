@@ -306,6 +306,9 @@ impl DrawDevice {
     pub fn clear_layers(&mut self) {
         self.layers.lock().unwrap().clear();
     }
+    pub fn font_line_height(&self) -> usize {
+        self.texter.line_height()
+    }
     pub fn add_text(&mut self, text: &str, x: Option<isize>, y: Option<isize>) -> Vec<LayerId> {
         let layers = self.layers.clone();
         let mut layers = layers.lock().unwrap();

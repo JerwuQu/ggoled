@@ -6,3 +6,7 @@ members = [
     "ggoled_app",
     "ggoled_draw",
 ]
+
+[profile.release]
+strip = true
+lto = true
