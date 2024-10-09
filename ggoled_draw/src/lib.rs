@@ -218,6 +218,7 @@ fn run_draw_device_thread(
                 }
             }
             if screen != prev_screen {
+                // TODO: autoshift feature: create a heatmap of most active pixels over last ~3 minutes and lightly shift whole screen to avoid burnin
                 dev.draw(&screen, 0, 0).unwrap();
                 prev_screen = screen;
             }
@@ -227,7 +228,7 @@ fn run_draw_device_thread(
             }
             drop(layers);
         }
-        spin_sleep::sleep(frame_delay);
+        spin_sleep::sleep(frame_delay); // TODO: calculate how long to actually sleep for
     }
 }
 
@@ -336,6 +337,7 @@ impl DrawDevice {
         self.cmd_sender.send(DrawCommand::AwaitFrame).unwrap();
         self.frame_recver.recv().unwrap();
     }
+    // TODO: atomic layer updates instead of play/pause (use `layers` handle with guard? renderer can use `try_lock` to avoid delaying frames)
     pub fn play(&mut self) {
         self.cmd_sender.send(DrawCommand::Play).unwrap();
     }

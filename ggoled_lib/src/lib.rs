@@ -49,6 +49,12 @@ impl Device {
         })
     }
 
+    /// Reconnect to a device.
+    pub fn reconnect(&mut self) -> anyhow::Result<()> {
+        *self = Self::connect()?;
+        Ok(())
+    }
+
     // Creates a HID report for a `ReportDrawable`
     // The Bitmap must already be within the report limits (from `split_for_report`)
     fn create_report(&self, d: &ReportDrawable) -> DrawReport {
@@ -126,4 +132,7 @@ impl Device {
         }
         Ok(())
     }
+
+    // TODO: functions to get info about device (volume, connect status, battery, etc)
+    // TODO: functions go set event handlers for info updates
 }
