@@ -31,9 +31,9 @@ impl FromStr for DrawPos {
     }
 }
 impl DrawPos {
-    fn to_option(&self) -> Option<isize> {
+    fn to_option(self) -> Option<isize> {
         match self {
-            DrawPos::Coord(c) => Some(*c),
+            DrawPos::Coord(c) => Some(c),
             DrawPos::Center => None,
         }
     }
@@ -177,7 +177,7 @@ fn main() {
                         lines.push(line);
                     }
                 }
-                if lines.len() > 0 {
+                if !lines.is_empty() {
                     dev.clear_layers();
                     dev.add_text(
                         &lines.join("\n"),
@@ -217,7 +217,7 @@ fn main() {
             let bitmaps: Vec<(Bitmap, Duration)> = paths
                 .iter()
                 .flat_map(|path| {
-                    decode_frames(&path, image_args.threshold).into_iter().map(|frame| {
+                    decode_frames(path, image_args.threshold).into_iter().map(|frame| {
                         (
                             frame.bitmap,
                             period.unwrap_or(frame.delay.unwrap_or(Duration::from_secs(1))),
@@ -234,7 +234,7 @@ fn main() {
                     let cy = (dev.width as isize - bitmap.w as isize) / 2;
                     let x = image_args.draw_args.screen_x.to_option().unwrap_or(cx);
                     let y = image_args.draw_args.screen_y.to_option().unwrap_or(cy);
-                    dev.draw(&bitmap, x, y).unwrap();
+                    dev.draw(bitmap, x, y).unwrap();
                     frame_idx += 1;
                     if now_time < next_frame {
                         sleep(next_frame.duration_since(SystemTime::now()).unwrap());
