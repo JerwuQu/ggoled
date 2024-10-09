@@ -1,6 +1,6 @@
 #![windows_subsystem = "windows"]
 
-use chrono::{Local, TimeDelta};
+use chrono::{Local, TimeDelta, Timelike};
 use ggoled_draw::{DrawDevice, LayerId};
 use ggoled_lib::Device;
 use media::{Media, MediaControl};
@@ -53,7 +53,7 @@ fn main() {
 
         // Update time every second
         let time = Local::now();
-        if time - last_time >= TimeDelta::seconds(1) {
+        if time.second() != last_time.second() {
             let time_str = time.format("%H:%M:%S").to_string();
             let media = mgr.get_media();
 
@@ -66,7 +66,11 @@ fn main() {
             if media != last_media {
                 dev.remove_layers(&media_layers);
                 if let Some(m) = &media {
-                    media_layers = dev.add_text(&format!("{}\n{}", m.title, m.artist), None, Some(24));
+                    media_layers = dev.add_text(
+                        &format!("{}\n{}", m.title, m.artist),
+                        None,
+                        Some(8 + dev.font_line_height() as isize),
+                    );
                 } else {
                     media_layers = vec![]
                 }
