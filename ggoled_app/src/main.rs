@@ -42,7 +42,9 @@ fn main() {
     let mut last_media: Option<Media> = None;
     let mut time_layers: Vec<LayerId> = vec![];
     let mut media_layers: Vec<LayerId> = vec![];
+    // TODO: screensaver when computer is unused or locked
     loop {
+        // Window event loop is required to get tray-icon working
         unsafe {
             let mut msg: MSG = std::mem::zeroed();
             while PeekMessageW(&mut msg, null_mut(), 0, 0, 1) > 0 {
@@ -55,14 +57,13 @@ fn main() {
         let time = Local::now();
         if time.second() != last_time.second() {
             let time_str = time.format("%H:%M:%S").to_string();
-            let media = mgr.get_media();
+            let media = mgr.get_media(); // also only fetch media once a second
 
-            dev.pause(); // TODO: atomic layer updates instead of play/pause
+            dev.pause();
             dev.remove_layers(&time_layers);
             time_layers = dev.add_text(&time_str, None, Some(8));
             last_time = time;
 
-            // Re-fetch media every second
             if media != last_media {
                 dev.remove_layers(&media_layers);
                 if let Some(m) = &media {
