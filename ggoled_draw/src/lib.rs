@@ -15,7 +15,7 @@ pub struct TextRenderer {
     font: Font<'static>,
 }
 impl TextRenderer {
-    pub fn new() -> Self {
+    pub fn create() -> Self {
         let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
         Self { font }
     }
@@ -76,7 +76,7 @@ fn bitmap_from_dynimage(img: &image::DynamicImage, threshold: u8) -> Bitmap {
     bitmap_from_image(&img.to_rgba8(), threshold)
 }
 pub fn bitmap_from_memory(buf: &[u8], threshold: u8) -> anyhow::Result<Bitmap> {
-    let img = image::load_from_memory(&buf)?;
+    let img = image::load_from_memory(buf)?;
     Ok(bitmap_from_dynimage(&img, threshold))
 }
 
@@ -169,16 +169,12 @@ fn run_draw_device_thread(
     let mut playing = false;
     loop {
         let time = SystemTime::now();
-        loop {
-            if let Ok(cmd) = cmd_receiver.try_recv() {
-                match cmd {
-                    DrawCommand::Play => playing = true,
-                    DrawCommand::Pause => playing = false,
-                    DrawCommand::AwaitFrame => signal_update = true,
-                    DrawCommand::Stop => return,
-                }
-            } else {
-                break;
+        while let Ok(cmd) = cmd_receiver.try_recv() {
+            match cmd {
+                DrawCommand::Play => playing = true,
+                DrawCommand::Pause => playing = false,
+                DrawCommand::AwaitFrame => signal_update = true,
+                DrawCommand::Stop => return,
             }
         }
         if playing {
@@ -186,7 +182,7 @@ fn run_draw_device_thread(
             let mut layers = layers.lock().unwrap();
             for (_, state) in layers.iter_mut() {
                 match &state.layer {
-                    DrawLayer::Image { bitmap, pos } => screen.blit(&bitmap, pos.x, pos.y, false),
+                    DrawLayer::Image { bitmap, pos } => screen.blit(bitmap, pos.x, pos.y, false),
                     DrawLayer::Animation {
                         frames,
                         pos,
@@ -197,14 +193,12 @@ fn run_draw_device_thread(
                             screen.blit(&frame.bitmap, pos.x, pos.y, false);
                             if *follow_fps {
                                 state.anim.ticks += 1;
-                            } else {
-                                if time >= state.anim.next_update {
-                                    state.anim.ticks += 1;
-                                    // TODO: handle 0 delay frames properly
-                                    // TODO: handle falling behind
-                                    if let Some(delay) = frame.delay {
-                                        state.anim.next_update += delay;
-                                    }
+                            } else if time >= state.anim.next_update {
+                                state.anim.ticks += 1;
+                                // TODO: handle 0 delay frames properly
+                                // TODO: handle falling behind
+                                if let Some(delay) = frame.delay {
+                                    state.anim.next_update += delay;
                                 }
                             }
                         }
@@ -214,7 +208,7 @@ fn run_draw_device_thread(
                         let scroll_w = bitmap.w as isize + MARGIN;
                         let dupes = 1 + dev.width / scroll_w as usize;
                         for i in 0..=dupes {
-                            screen.blit(&bitmap, state.scroll.x + i as isize * scroll_w, *y, false);
+                            screen.blit(bitmap, state.scroll.x + i as isize * scroll_w, *y, false);
                         }
                         state.scroll.x -= 1;
                         if state.scroll.x <= -scroll_w {
@@ -266,7 +260,7 @@ impl DrawDevice {
             thread,
             cmd_sender,
             frame_recver,
-            texter: TextRenderer::new(),
+            texter: TextRenderer::create(),
         }
     }
     pub fn center_bitmap(&self, bitmap: &Bitmap) -> Pos {
@@ -300,7 +294,7 @@ impl DrawDevice {
     pub fn remove_layers(&mut self, ids: &[LayerId]) {
         let mut layers = self.layers.lock().unwrap();
         for id in ids {
-            layers.remove(&id);
+            layers.remove(id);
         }
     }
     pub fn clear_layers(&mut self) {
@@ -315,7 +309,7 @@ impl DrawDevice {
         let bitmaps = self.texter.render_lines(text);
         let line_height = self.texter.line_height();
         let center_y: isize = (self.height as isize - (line_height * bitmaps.len()) as isize) / 2;
-        let layer_ids = bitmaps
+        bitmaps
             .into_iter()
             .enumerate()
             .map(|(i, bitmap)| {
@@ -336,8 +330,7 @@ impl DrawDevice {
                     )
                 }
             })
-            .collect();
-        layer_ids
+            .collect()
     }
     pub fn await_frame(&mut self) {
         self.cmd_sender.send(DrawCommand::AwaitFrame).unwrap();
