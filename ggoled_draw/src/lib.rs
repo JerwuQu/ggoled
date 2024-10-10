@@ -188,7 +188,7 @@ fn run_draw_device_thread(
     let mut playing = false;
     let mut oled_shift = 0;
     let mut last_shift = SystemTime::now();
-    let mut shift_mode = ShiftMode::Simple;
+    let mut shift_mode = ShiftMode::Off;
     loop {
         let time = SystemTime::now();
         while let Ok(cmd) = cmd_receiver.try_recv() {
