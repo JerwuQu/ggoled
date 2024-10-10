@@ -88,14 +88,13 @@ fn main() {
     let tm_time_check = CheckMenuItem::new("Show time", true, config.show_time, None);
     let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
     let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
-    // TODO: abstract oled shift mode "radio button" behavior a bit
-    let tm_oledsave_off = CheckMenuItem::new("Off", true, matches!(config.oled_shift, ConfigShiftMode::Off), None);
-    let tm_oledsave_simple = CheckMenuItem::new(
-        "Simple",
-        true,
-        matches!(config.oled_shift, ConfigShiftMode::Simple),
-        None,
-    );
+    let tm_oledshift_off = CheckMenuItem::new("Off", true, false, None);
+    let tm_oledshift_simple = CheckMenuItem::new("Simple", true, false, None);
+    let update_oledshift = |dev: &mut DrawDevice, mode: ConfigShiftMode| {
+        tm_oledshift_off.set_checked(matches!(mode, ConfigShiftMode::Off));
+        tm_oledshift_simple.set_checked(matches!(mode, ConfigShiftMode::Simple));
+        dev.set_shift_mode(mode.to_api());
+    };
     let tm_quit = MenuItem::new("Quit", true, None);
     let tray_menu = Menu::with_items(&[
         &MenuItem::new("ggoled", false, None),
@@ -103,7 +102,7 @@ fn main() {
         &tm_time_check,
         &tm_media_check,
         &tm_idle_check,
-        &Submenu::with_items("OLED screen shift", true, &[&tm_oledsave_off, &tm_oledsave_simple]).unwrap(),
+        &Submenu::with_items("OLED screen shift", true, &[&tm_oledshift_off, &tm_oledshift_simple]).unwrap(),
         &PredefinedMenuItem::separator(),
         &tm_quit,
     ])
@@ -124,7 +123,7 @@ fn main() {
         .unwrap();
 
     let mut dev = DrawDevice::new(Device::connect().unwrap(), 30);
-    dev.set_shift_mode(config.oled_shift.to_api());
+    update_oledshift(&mut dev, config.oled_shift);
     dev.play();
 
     let mgr = MediaControl::new();
@@ -156,24 +155,14 @@ fn main() {
             } else if event.id == tm_idle_check.id() {
                 config.idle_timeout = tm_idle_check.is_checked();
                 config_updated = true;
-            } else if event.id == tm_oledsave_off.id() {
-                if tm_oledsave_off.is_checked() {
-                    config.oled_shift = ConfigShiftMode::Off;
-                    tm_oledsave_simple.set_checked(false);
-                    dev.set_shift_mode(config.oled_shift.to_api());
-                    config_updated = true;
-                } else if matches!(config.oled_shift, ConfigShiftMode::Off) {
-                    tm_oledsave_off.set_checked(true);
-                }
-            } else if event.id == tm_oledsave_simple.id() {
-                if tm_oledsave_simple.is_checked() {
-                    config.oled_shift = ConfigShiftMode::Simple;
-                    tm_oledsave_off.set_checked(false);
-                    dev.set_shift_mode(config.oled_shift.to_api());
-                    config_updated = true;
-                } else if matches!(config.oled_shift, ConfigShiftMode::Simple) {
-                    tm_oledsave_simple.set_checked(true);
-                }
+            } else if event.id == tm_oledshift_off.id() {
+                config.oled_shift = ConfigShiftMode::Off;
+                update_oledshift(&mut dev, config.oled_shift);
+                config_updated = true;
+            } else if event.id == tm_oledshift_simple.id() {
+                config.oled_shift = ConfigShiftMode::Simple;
+                update_oledshift(&mut dev, config.oled_shift);
+                config_updated = true;
             } else if event.id == tm_quit.id() {
                 break 'main; // break main loop
             }
