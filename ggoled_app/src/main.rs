@@ -18,6 +18,7 @@ use windows_sys::Win32::{
 };
 mod media;
 
+// TODO: use config
 const IDLE_TIMEOUT_SECS: usize = 60;
 
 fn main() {
