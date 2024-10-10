@@ -1,5 +1,10 @@
+use anyhow::bail;
+use ggoled_lib::{bitmap::BitVec, Bitmap, Device};
+use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
+use rusttype::{point, Font, Scale};
 use std::{
     collections::BTreeMap,
+    path::PathBuf,
     sync::{
         mpsc::{channel, Receiver, Sender},
         Arc, Mutex, MutexGuard,
@@ -7,23 +12,29 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use ggoled_lib::{bitmap::BitVec, Bitmap, Device};
-use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
-use rusttype::{point, Font, Scale};
-
 pub struct TextRenderer {
     font: Font<'static>,
+    size: f32,
 }
 impl TextRenderer {
-    pub fn create() -> Self {
-        let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
-        Self { font }
+    pub fn load_from_file(path: &PathBuf, size: f32) -> anyhow::Result<Self> {
+        let data = std::fs::read(path)?;
+        let Some(font) = Font::try_from_vec(data) else {
+            bail!("Failed to load font");
+        };
+        Ok(Self { font, size })
     }
-    fn scale() -> Scale {
-        Scale::uniform(16.0)
+    pub fn new_pixel_operator() -> Self {
+        Self {
+            font: Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap(),
+            size: 16.0,
+        }
+    }
+    fn scale(&self) -> Scale {
+        Scale::uniform(self.size)
     }
     pub fn line_height(&self) -> usize {
-        let v_metrics = self.font.v_metrics(Self::scale());
+        let v_metrics = self.font.v_metrics(self.scale());
         (v_metrics.ascent - v_metrics.descent).ceil() as usize
     }
     pub fn render_lines(&self, text: &str) -> Vec<Bitmap> {
@@ -31,7 +42,7 @@ impl TextRenderer {
         let text_lines = clean_text.split('\n');
         text_lines
             .map(|text_line| {
-                let glyphs: Vec<_> = self.font.layout(text_line, Self::scale(), point(0.0, 0.0)).collect();
+                let glyphs: Vec<_> = self.font.layout(text_line, self.scale(), point(0.0, 0.0)).collect();
                 let mut line_w_offset = 0;
                 let mut line_h_offset = 0;
                 let mut line_w = 0;
@@ -241,7 +252,7 @@ pub struct DrawDevice {
     thread: Option<std::thread::JoinHandle<()>>,
     cmd_sender: Sender<DrawCommand>,
     frame_recver: Receiver<()>,
-    texter: TextRenderer,
+    pub texter: TextRenderer,
 }
 impl DrawDevice {
     pub fn new(dev: Device, fps: usize) -> DrawDevice {
@@ -261,7 +272,7 @@ impl DrawDevice {
             thread,
             cmd_sender,
             frame_recver,
-            texter: TextRenderer::create(),
+            texter: TextRenderer::new_pixel_operator(),
         }
     }
     pub fn center_bitmap(&self, bitmap: &Bitmap) -> Pos {

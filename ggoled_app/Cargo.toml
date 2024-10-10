@@ -15,3 +15,4 @@ anyhow = "1.0.89"
 serde = { version = "1.0.210", features = ["derive"] }
 toml = "0.8.19"
 directories = "5.0.1"
+rfd = "0.15.0"

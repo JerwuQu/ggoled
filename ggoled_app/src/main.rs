@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 
 use chrono::{Local, TimeDelta, Timelike};
-use ggoled_draw::{DrawDevice, LayerId};
+use ggoled_draw::{DrawDevice, LayerId, TextRenderer};
 use ggoled_lib::Device;
 use media::{Media, MediaControl};
 use serde::{Deserialize, Serialize};
@@ -21,12 +21,19 @@ mod media;
 
 const IDLE_TIMEOUT_SECS: usize = 60;
 
+#[derive(Serialize, Deserialize, Default)]
+struct ConfigFont {
+    path: PathBuf,
+    size: f32,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
     show_time: bool,
     show_media: bool,
     idle_timeout: bool,
+    font: Option<ConfigFont>,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -34,6 +41,7 @@ impl Default for Config {
             show_time: true,
             show_media: true,
             idle_timeout: true,
+            font: None,
         }
     }
 }
@@ -71,11 +79,28 @@ fn main() {
     let tm_time_check = CheckMenuItem::new("Show time", true, config.show_time, None);
     let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
     let tm_idle_check = CheckMenuItem::new("Screensaver on idle", true, config.idle_timeout, None);
+    let tm_font_builtin = CheckMenuItem::new("Builtin", true, false, None);
+    let tm_font_custom = CheckMenuItem::new("Custom", true, false, None);
+    let update_tm_font_menu = |config: &Config| {
+        tm_font_builtin.set_checked(config.font.is_none());
+        tm_font_custom.set_checked(config.font.is_some());
+    };
+    update_tm_font_menu(&config);
     let tm_quit = MenuItem::new("Quit", true, None);
     let tray_menu = Menu::with_items(&[
         &MenuItem::new("ggoled", false, None),
         &PredefinedMenuItem::separator(),
-        &Submenu::with_items("Config", true, &[&tm_time_check, &tm_media_check, &tm_idle_check]).unwrap(),
+        &Submenu::with_items(
+            "Config",
+            true,
+            &[
+                &tm_time_check,
+                &tm_media_check,
+                &tm_idle_check,
+                &Submenu::with_items("Font", true, &[&tm_font_builtin, &tm_font_custom]).unwrap(),
+            ],
+        )
+        .unwrap(),
         &PredefinedMenuItem::separator(),
         &tm_quit,
     ])
@@ -127,6 +152,19 @@ fn main() {
             } else if event.id == tm_idle_check.id() {
                 config.idle_timeout = tm_idle_check.is_checked();
                 config_updated = true;
+            } else if event.id == tm_font_builtin.id() {
+                dev.texter = TextRenderer::new_pixel_operator();
+                config.font = None;
+                config_updated = true;
+                update_tm_font_menu(&config);
+            } else if event.id == tm_font_custom.id() {
+                if let Some(path) = rfd::FileDialog::new().add_filter("Font", &["ttf", "otf"]).pick_file() {
+                    let size = 16.0f32;
+                    dev.texter = TextRenderer::load_from_file(&path, size).expect("Failed to load font");
+                    config.font = Some(ConfigFont { path, size });
+                    config_updated = true;
+                }
+                update_tm_font_menu(&config);
             } else if event.id == tm_quit.id() {
                 break 'main; // break main loop
             }
@@ -179,6 +217,8 @@ fn main() {
                     }
                     last_media = media;
                 }
+
+                // TODO: show icon if headset was connected/disconnected
 
                 dev.play();
             }
