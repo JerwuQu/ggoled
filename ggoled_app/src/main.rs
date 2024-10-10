@@ -164,7 +164,7 @@ fn main() {
                 dev.remove_layers(&time_layers);
                 if config.show_time {
                     let time_str = time.format("%H:%M:%S").to_string();
-                    time_layers = dev.add_text(&time_str, None, Some(8));
+                    time_layers = dev.add_text(&time_str, None, if media.is_some() { Some(8) } else { None });
                 }
 
                 // Media
