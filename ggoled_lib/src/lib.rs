@@ -1,14 +1,14 @@
 pub mod bitmap;
 use anyhow::bail;
 pub use bitmap::Bitmap;
-use hidapi::{HidApi, HidDevice};
+use hidapi::{HidApi, HidDevice, MAX_REPORT_DESCRIPTOR_SIZE};
 use std::cmp::min;
 
 // NOTE: these work for Arctis Nova Pro but might not for different products!
-const REPORT_SPLIT_SZ: usize = 64;
-const REPORT_SIZE: usize = 1024;
+const SCREEN_REPORT_SPLIT_SZ: usize = 64;
+const SCREEN_REPORT_SIZE: usize = 1024;
 
-type DrawReport = [u8; REPORT_SIZE];
+type DrawReport = [u8; SCREEN_REPORT_SIZE];
 
 struct ReportDrawable<'a> {
     bitmap: &'a Bitmap,
@@ -20,8 +20,14 @@ struct ReportDrawable<'a> {
     src_y: usize,
 }
 
+pub enum DeviceEvent {
+    VolumeChanged { volume: u8 },
+    BatteryChanged { headset: u8, charging: u8 },
+}
+
 pub struct Device {
-    dev: HidDevice,
+    oled_dev: HidDevice,
+    info_dev: HidDevice,
     pub width: usize,
     pub height: usize,
 }
@@ -29,21 +35,61 @@ impl Device {
     /// Connect to a SteelSeries GG device.
     pub fn connect() -> anyhow::Result<Device> {
         let api = HidApi::new().unwrap();
-        let Some(dev_info) = api.device_list().find(|d| {
-            d.vendor_id() == 0x1038 // SteelSeries
+
+        // Find all connected devices matching given Vendor/Product IDs and interface
+        let device_infos: Vec<_> = api
+            .device_list()
+            .filter(|d| {
+                d.vendor_id() == 0x1038 // SteelSeries
         && [
             0x12cb, // Arctis Nova Pro Wired
             0x12e0, // Arctis Nova Pro Wireless
         ].contains(&d.product_id()) && d.interface_number() == 4
-        }) else {
-            bail!("Device not found");
-        };
-        let Ok(dev) = dev_info.open_device(&api) else {
-            bail!("Failed to open device");
+            })
+            .collect();
+
+        // We're expecting to find exactly two devices with different HID descriptors
+        if device_infos.len() != 2 {
+            bail!("Too many matching devices connected");
+        }
+
+        // Open all such devices
+        let Ok(mut devices) = device_infos
+            .iter()
+            .map(|info| anyhow::Ok(info.open_device(&api)?))
+            .collect::<anyhow::Result<Vec<_>>>()
+        else {
+            bail!("Failed to connect to USB device!");
         };
 
+        // Get HID reports for all devices
+        let Ok(mut device_reports) = devices
+            .iter()
+            .map(|dev| {
+                let mut buf = [0u8; MAX_REPORT_DESCRIPTOR_SIZE];
+                let sz = dev.get_report_descriptor(&mut buf)?;
+                anyhow::Ok(Vec::from(&buf[..sz]))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()
+        else {
+            bail!("Failed to get USB device HID reports!");
+        };
+
+        // Grab the two devices by their descriptors
+        let Some(oled_dev_idx) = device_reports.iter().position(|desc| desc[1] == 0xc0) else {
+            bail!("No OLED device found");
+        };
+        _ = device_reports.swap_remove(oled_dev_idx);
+        let oled_dev = devices.swap_remove(oled_dev_idx);
+        let Some(info_dev_idx) = device_reports.iter().position(|desc| desc[1] == 0x00) else {
+            bail!("No info device found");
+        };
+        _ = device_reports.swap_remove(info_dev_idx);
+        let info_dev = devices.swap_remove(info_dev_idx);
+
         Ok(Device {
-            dev,
+            oled_dev,
+            info_dev,
             width: 128,
             height: 64,
         })
@@ -58,9 +104,9 @@ impl Device {
     // Creates a HID report for a `ReportDrawable`
     // The Bitmap must already be within the report limits (from `split_for_report`)
     fn create_report(&self, d: &ReportDrawable) -> DrawReport {
-        let mut report: DrawReport = [0; REPORT_SIZE];
+        let mut report: DrawReport = [0; SCREEN_REPORT_SIZE];
         report[0] = 0x06; // hid report id
-        report[1] = 0x93; // steelseries command id? unknown
+        report[1] = 0x93; // command id
         report[2] = d.dst_x as u8;
         report[3] = d.dst_y as u8;
         report[4] = d.w as u8;
@@ -108,15 +154,15 @@ impl Device {
 
         // Split
         let mut vec = Vec::<ReportDrawable<'a>>::new();
-        let splits = w.div_ceil(REPORT_SPLIT_SZ);
+        let splits = w.div_ceil(SCREEN_REPORT_SPLIT_SZ);
         for i in 0..splits {
             vec.push(ReportDrawable {
                 bitmap,
-                w: min(REPORT_SPLIT_SZ, w - i * REPORT_SPLIT_SZ),
+                w: min(SCREEN_REPORT_SPLIT_SZ, w - i * SCREEN_REPORT_SPLIT_SZ),
                 h,
-                dst_x: x + (i * REPORT_SPLIT_SZ),
+                dst_x: x + (i * SCREEN_REPORT_SPLIT_SZ),
                 dst_y: y,
-                src_x: src_x + i * REPORT_SPLIT_SZ,
+                src_x: src_x + i * SCREEN_REPORT_SPLIT_SZ,
                 src_y,
             });
         }
@@ -128,11 +174,49 @@ impl Device {
         let drawables = self.prepare_for_report(bitmap, x, y);
         for drawable in drawables {
             let report = self.create_report(&drawable);
-            self.dev.send_feature_report(&report)?;
+            self.oled_dev.send_feature_report(&report)?;
         }
         Ok(())
     }
 
-    // TODO: functions to get info about device (volume, connect status, battery, etc)
-    // TODO: functions go set event handlers for info updates
+    /// Set screen brightness.
+    pub fn set_brightness(&self, value: u8) -> anyhow::Result<()> {
+        if value < 0x01 {
+            bail!("brightness too low!");
+        } else if value > 0x0a {
+            bail!("brightness too high!");
+        }
+        let mut report = [0; 64];
+        report[0] = 0x06; // hid report id
+        report[1] = 0x85; // command id
+        report[2] = value;
+        self.oled_dev.write(&report)?;
+        Ok(())
+    }
+
+    fn parse_event(buf: &[u8; 64]) -> Option<DeviceEvent> {
+        println!("got: {:x?}", buf);
+        if buf[0] != 7 {
+            return None;
+        }
+        Some(match buf[1] {
+            0x25 => DeviceEvent::VolumeChanged {
+                volume: 38u8.saturating_sub(buf[3]),
+            },
+            // Connection/Disconnection: 0xb5 => {}
+            0xb7 => DeviceEvent::BatteryChanged {
+                headset: buf[2],
+                charging: buf[3],
+                // NOTE: there's a chance `buf[4]` represents the max value, but i don't have any other devices to test with
+            },
+            _ => return None,
+        })
+    }
+
+    /// Poll events from the device.
+    pub fn poll(&self) -> anyhow::Result<Option<DeviceEvent>> {
+        let mut buf = [0u8; 64];
+        _ = self.info_dev.read(&mut buf).unwrap();
+        Ok(Self::parse_event(&buf))
+    }
 }

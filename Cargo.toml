@@ -6,6 +6,7 @@ members = [
     "ggoled_app",
     "ggoled_draw",
 ]
+default-members = ["ggoled_cli"]
 
 [profile.release]
 strip = true
