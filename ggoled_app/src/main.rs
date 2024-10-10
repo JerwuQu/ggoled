@@ -67,7 +67,7 @@ impl Config {
         Ok(())
     }
     pub fn load() -> Config {
-        let Ok(text) = std::fs::read_to_string(&Self::path()) else {
+        let Ok(text) = std::fs::read_to_string(Self::path()) else {
             return Config::default();
         };
         let Ok(conf) = toml::from_str(&text) else {
@@ -148,24 +148,22 @@ fn main() {
         while let Ok(event) = menu_channel.try_recv() {
             if event.id == tm_time_check.id() {
                 config.show_time = tm_time_check.is_checked();
-                config_updated = true;
             } else if event.id == tm_media_check.id() {
                 config.show_media = tm_media_check.is_checked();
-                config_updated = true;
             } else if event.id == tm_idle_check.id() {
                 config.idle_timeout = tm_idle_check.is_checked();
-                config_updated = true;
             } else if event.id == tm_oledshift_off.id() {
                 config.oled_shift = ConfigShiftMode::Off;
                 update_oledshift(&mut dev, config.oled_shift);
-                config_updated = true;
             } else if event.id == tm_oledshift_simple.id() {
                 config.oled_shift = ConfigShiftMode::Simple;
                 update_oledshift(&mut dev, config.oled_shift);
-                config_updated = true;
             } else if event.id == tm_quit.id() {
                 break 'main; // break main loop
+            } else {
+                continue; // no match, don't mark config as updated
             }
+            config_updated = true;
         }
         if config_updated {
             config.save().unwrap();
