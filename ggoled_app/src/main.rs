@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 
 use chrono::{Local, TimeDelta, Timelike};
-use ggoled_draw::{DrawDevice, LayerId};
+use ggoled_draw::{DrawDevice, LayerId, ShiftMode};
 use ggoled_lib::Device;
 use media::{Media, MediaControl};
 use serde::{Deserialize, Serialize};
@@ -21,12 +21,28 @@ mod media;
 
 const IDLE_TIMEOUT_SECS: usize = 60;
 
+#[derive(Serialize, Deserialize, Default, Clone, Copy)]
+enum ConfigShiftMode {
+    Off,
+    #[default]
+    Simple,
+}
+impl ConfigShiftMode {
+    fn to_api(self) -> ShiftMode {
+        match self {
+            ConfigShiftMode::Off => ShiftMode::Off,
+            ConfigShiftMode::Simple => ShiftMode::Simple,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
     show_time: bool,
     show_media: bool,
     idle_timeout: bool,
+    oled_shift: ConfigShiftMode,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -34,6 +50,7 @@ impl Default for Config {
             show_time: true,
             show_media: true,
             idle_timeout: true,
+            oled_shift: ConfigShiftMode::default(),
         }
     }
 }
@@ -70,12 +87,23 @@ fn main() {
 
     let tm_time_check = CheckMenuItem::new("Show time", true, config.show_time, None);
     let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
-    let tm_idle_check = CheckMenuItem::new("Screensaver on idle", true, config.idle_timeout, None);
+    let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
+    // TODO: abstract oled shift mode "radio button" behavior a bit
+    let tm_oledsave_off = CheckMenuItem::new("Off", true, matches!(config.oled_shift, ConfigShiftMode::Off), None);
+    let tm_oledsave_simple = CheckMenuItem::new(
+        "Simple",
+        true,
+        matches!(config.oled_shift, ConfigShiftMode::Simple),
+        None,
+    );
     let tm_quit = MenuItem::new("Quit", true, None);
     let tray_menu = Menu::with_items(&[
         &MenuItem::new("ggoled", false, None),
         &PredefinedMenuItem::separator(),
-        &Submenu::with_items("Config", true, &[&tm_time_check, &tm_media_check, &tm_idle_check]).unwrap(),
+        &tm_time_check,
+        &tm_media_check,
+        &tm_idle_check,
+        &Submenu::with_items("OLED screen shift", true, &[&tm_oledsave_off, &tm_oledsave_simple]).unwrap(),
         &PredefinedMenuItem::separator(),
         &tm_quit,
     ])
@@ -96,6 +124,7 @@ fn main() {
         .unwrap();
 
     let mut dev = DrawDevice::new(Device::connect().unwrap(), 30);
+    dev.set_shift_mode(config.oled_shift.to_api());
     dev.play();
 
     let mgr = MediaControl::new();
@@ -127,6 +156,24 @@ fn main() {
             } else if event.id == tm_idle_check.id() {
                 config.idle_timeout = tm_idle_check.is_checked();
                 config_updated = true;
+            } else if event.id == tm_oledsave_off.id() {
+                if tm_oledsave_off.is_checked() {
+                    config.oled_shift = ConfigShiftMode::Off;
+                    tm_oledsave_simple.set_checked(false);
+                    dev.set_shift_mode(config.oled_shift.to_api());
+                    config_updated = true;
+                } else if matches!(config.oled_shift, ConfigShiftMode::Off) {
+                    tm_oledsave_off.set_checked(true);
+                }
+            } else if event.id == tm_oledsave_simple.id() {
+                if tm_oledsave_simple.is_checked() {
+                    config.oled_shift = ConfigShiftMode::Simple;
+                    tm_oledsave_off.set_checked(false);
+                    dev.set_shift_mode(config.oled_shift.to_api());
+                    config_updated = true;
+                } else if matches!(config.oled_shift, ConfigShiftMode::Simple) {
+                    tm_oledsave_simple.set_checked(true);
+                }
             } else if event.id == tm_quit.id() {
                 break 'main; // break main loop
             }

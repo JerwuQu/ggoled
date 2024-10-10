@@ -135,10 +135,16 @@ pub enum DrawLayer {
     },
 }
 
+pub enum ShiftMode {
+    Off,
+    Simple,
+}
+
 enum DrawCommand {
     Play,
     Pause,
     AwaitFrame,
+    SetShiftMode(ShiftMode),
     Stop,
 }
 
@@ -156,6 +162,19 @@ struct DrawLayerState {
     scroll: ScrollState,
 }
 
+const OLED_SHIFT_PERIOD: Duration = Duration::from_secs(90);
+const OLED_SHIFTS: [(isize, isize); 9] = [
+    (0, 0),
+    (0, -1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+    (-1, 1),
+    (-1, 0),
+    (-1, -1),
+];
+
 fn run_draw_device_thread(
     dev: Device,
     layers: Arc<Mutex<LayerMap>>,
@@ -167,6 +186,9 @@ fn run_draw_device_thread(
     let mut prev_screen = Bitmap::new(0, 0, false);
     let mut signal_update = false;
     let mut playing = false;
+    let mut oled_shift = 0;
+    let mut last_shift = SystemTime::now();
+    let mut shift_mode = ShiftMode::Simple;
     loop {
         let time = SystemTime::now();
         while let Ok(cmd) = cmd_receiver.try_recv() {
@@ -174,15 +196,27 @@ fn run_draw_device_thread(
                 DrawCommand::Play => playing = true,
                 DrawCommand::Pause => playing = false,
                 DrawCommand::AwaitFrame => signal_update = true,
+                DrawCommand::SetShiftMode(mode) => shift_mode = mode,
                 DrawCommand::Stop => return,
             }
         }
         if playing {
+            let (shift_x, shift_y) = match shift_mode {
+                ShiftMode::Off => (0, 0),
+                ShiftMode::Simple => {
+                    if time.duration_since(last_shift).unwrap() >= OLED_SHIFT_PERIOD {
+                        oled_shift = (oled_shift + 1) % OLED_SHIFTS.len();
+                        last_shift = time;
+                    }
+                    OLED_SHIFTS[oled_shift]
+                }
+            };
+
             let mut screen = Bitmap::new(dev.width, dev.height, false);
             let mut layers = layers.lock().unwrap();
             for (_, state) in layers.iter_mut() {
                 match &state.layer {
-                    DrawLayer::Image { bitmap, pos } => screen.blit(bitmap, pos.x, pos.y, false),
+                    DrawLayer::Image { bitmap, pos } => screen.blit(bitmap, pos.x + shift_x, pos.y + shift_y, false),
                     DrawLayer::Animation {
                         frames,
                         pos,
@@ -190,7 +224,7 @@ fn run_draw_device_thread(
                     } => {
                         if !frames.is_empty() {
                             let frame = &frames[state.anim.ticks % frames.len()];
-                            screen.blit(&frame.bitmap, pos.x, pos.y, false);
+                            screen.blit(&frame.bitmap, pos.x + shift_x, pos.y + shift_y, false);
                             if *follow_fps {
                                 state.anim.ticks += 1;
                             } else if time >= state.anim.next_update {
@@ -208,7 +242,12 @@ fn run_draw_device_thread(
                         let scroll_w = bitmap.w as isize + MARGIN;
                         let dupes = 1 + dev.width / scroll_w as usize;
                         for i in 0..=dupes {
-                            screen.blit(bitmap, state.scroll.x + i as isize * scroll_w, *y, false);
+                            screen.blit(
+                                bitmap,
+                                state.scroll.x + i as isize * scroll_w + shift_x,
+                                *y + shift_y,
+                                false,
+                            );
                         }
                         state.scroll.x -= 1;
                         if state.scroll.x <= -scroll_w {
@@ -218,7 +257,6 @@ fn run_draw_device_thread(
                 }
             }
             if screen != prev_screen {
-                // TODO: autoshift feature: create a heatmap of most active pixels over last ~3 minutes and lightly shift whole screen to avoid burnin
                 dev.draw(&screen, 0, 0).unwrap();
                 prev_screen = screen;
             }
@@ -336,6 +374,9 @@ impl DrawDevice {
     pub fn await_frame(&mut self) {
         self.cmd_sender.send(DrawCommand::AwaitFrame).unwrap();
         self.frame_recver.recv().unwrap();
+    }
+    pub fn set_shift_mode(&mut self, mode: ShiftMode) {
+        self.cmd_sender.send(DrawCommand::SetShiftMode(mode)).unwrap();
     }
     // TODO: atomic layer updates instead of play/pause (use `layers` handle with guard? renderer can use `try_lock` to avoid delaying frames)
     pub fn play(&mut self) {
