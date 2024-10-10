@@ -141,6 +141,12 @@ enum Args {
         #[arg(help = "Image paths", index = 1)]
         paths: Vec<String>,
     },
+
+    #[command(about = "Set display brightness")]
+    Brightness {
+        #[arg(help = "Brighness, 1-10", index = 1)]
+        value: u8,
+    },
 }
 
 fn main() {
@@ -252,6 +258,9 @@ fn main() {
                     draw_animation();
                 }
             }
+        }
+        Args::Brightness { value } => {
+            dev.set_brightness(value).unwrap();
         }
     }
 }
