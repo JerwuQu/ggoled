@@ -4,7 +4,9 @@ Put custom graphics on your SteelSeries Arctis Nova Pro Base Station 128x64 OLED
 
 This utility implements the USB protocol, so you don't need SteelSeries GG/Engine Apps/GameSense, and it works on linux.
 
-## Showcase
+For Windows there is also a desktop application that shows the current time and currently playing media.
+
+## Animation showcase
 
 Bad Apple at 60 fps.
 This also showcases the burn-in you will get if not careful with OLEDs. The flickering is due to bad camera settings and not actually shown on the display.
@@ -17,22 +19,48 @@ This also showcases the burn-in you will get if not careful with OLEDs. The flic
 | ------------------------------------ | --------------------------------------------------- |
 | SteelSeries Arctis Nova Pro Wired    | ✅                                                  |
 | SteelSeries Arctis Nova Pro Wireless | ✅                                                  |
-| SteelSeries Arctis Pro Wired         | ❌                                                  |
-| SteelSeries Arctis Pro Wireless      | ❌ [#2](https://github.com/JerwuQu/ggoled/issues/2) |
+| SteelSeries Arctis Pro Wired         | 🧐 [#2](https://github.com/JerwuQu/ggoled/issues/2) |
+| SteelSeries Arctis Pro Wireless      | 🧐 [#2](https://github.com/JerwuQu/ggoled/issues/2) |
 
 PRs and issues for similar devices are welcome!
 
-## Usage
+## CLI usage examples
 
 - `ggoled text "Hello, World!"`: draw some text onto your display.
 - `ggoled img cool_image.png`: draw an image onto your display.
 - `ggoled anim -r 10 -l 20 frame1.png frame2.png frame3.png`: play an animation at 10 fps, looped 20 times.
 - `ggoled anim animation.gif`: play a gif animation.
+- `ggoled brightness 1`: set the brightness to low.
 - See `ggoled --help` for more commands and flags.
+
+## Desktop application
+
+_Currently Windows only._
+
+The application puts itself as an icon in the system tray that you can right-click to configure.
+
+It gets media information from the Windows API which makes it work with almost all applications (with some limitations).
+
+There are also features to avoid OLED burn-in that is otherwise unavoidable when using the official software, such as the screensaver function which will turn off the OLED display when away from the computer, or the OLED shifter which will infrequently move things around slightly.
+To extend the lifespan of your display, both of these are strongly recommended to use, along with using a low screen brightness.
+
+### Custom font
+
+It's recommended to use bitmap fonts to avoid weird artifacting, but any TTF or OTF font should work.
+
+Modify the `%appdata%\ggoled_app.toml` file and add:
+
+```toml
+[font]
+path = 'C:\Path\To\Font.ttf'
+size = 16.0
+```
+
+Then restart the application.
 
 ## Install
 
-For Windows you can download the latest build either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
+For Windows you can download the latest builds either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
 
 Otherwise, install the Rust toolchain and run: `cargo install --git https://github.com/JerwuQu/ggoled.git`
 
