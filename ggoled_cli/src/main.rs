@@ -6,11 +6,12 @@ use ggoled_draw::DrawDevice;
 use ggoled_lib::Bitmap;
 use ggoled_lib::Device;
 use spin_sleep::sleep;
+use std::time::Instant;
 use std::{
     io::{stdin, Read},
     ops::Div,
     str::FromStr,
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 #[derive(Clone, Copy)]
@@ -192,7 +193,6 @@ fn main() {
                     );
                 }
             }
-            dev.await_frame();
         }
         Args::Img { path, image_args } => {
             let bitmap = if path == "-" {
@@ -234,7 +234,7 @@ fn main() {
             let mut frame_idx = 0;
             let mut draw_animation = || {
                 for (bitmap, delay) in &bitmaps {
-                    let now_time = SystemTime::now();
+                    let now_time = Instant::now();
                     let next_frame = now_time + *delay;
                     let cx = (dev.width as isize - bitmap.w as isize) / 2;
                     let cy = (dev.width as isize - bitmap.w as isize) / 2;
@@ -243,7 +243,7 @@ fn main() {
                     dev.draw(bitmap, x, y).unwrap();
                     frame_idx += 1;
                     if now_time < next_frame {
-                        sleep(next_frame.duration_since(SystemTime::now()).unwrap());
+                        sleep(next_frame.duration_since(Instant::now()));
                     } else {
                         println!("fell behind - framerate too fast");
                     }

@@ -1,29 +1,40 @@
+use anyhow::bail;
+use ggoled_lib::{bitmap::BitVec, Bitmap, Device};
+use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
+use rusttype::{point, Font, Scale};
 use std::{
     collections::BTreeMap,
+    path::PathBuf,
     sync::{
         mpsc::{channel, Receiver, Sender},
         Arc, Mutex, MutexGuard,
     },
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
 };
-
-use ggoled_lib::{bitmap::BitVec, Bitmap, Device};
-use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
-use rusttype::{point, Font, Scale};
 
 pub struct TextRenderer {
     font: Font<'static>,
+    size: f32,
 }
 impl TextRenderer {
-    pub fn create() -> Self {
-        let font = Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap();
-        Self { font }
+    pub fn load_from_file(path: &PathBuf, size: f32) -> anyhow::Result<Self> {
+        let data = std::fs::read(path)?;
+        let Some(font) = Font::try_from_vec(data) else {
+            bail!("Failed to load font");
+        };
+        Ok(Self { font, size })
     }
-    fn scale() -> Scale {
-        Scale::uniform(16.0)
+    pub fn new_pixel_operator() -> Self {
+        Self {
+            font: Font::try_from_bytes(include_bytes!("../fonts/PixelOperator.ttf")).unwrap(),
+            size: 16.0,
+        }
+    }
+    fn scale(&self) -> Scale {
+        Scale::uniform(self.size)
     }
     pub fn line_height(&self) -> usize {
-        let v_metrics = self.font.v_metrics(Self::scale());
+        let v_metrics = self.font.v_metrics(self.scale());
         (v_metrics.ascent - v_metrics.descent).ceil() as usize
     }
     pub fn render_lines(&self, text: &str) -> Vec<Bitmap> {
@@ -31,7 +42,7 @@ impl TextRenderer {
         let text_lines = clean_text.split('\n');
         text_lines
             .map(|text_line| {
-                let glyphs: Vec<_> = self.font.layout(text_line, Self::scale(), point(0.0, 0.0)).collect();
+                let glyphs: Vec<_> = self.font.layout(text_line, self.scale(), point(0.0, 0.0)).collect();
                 let mut line_w_offset = 0;
                 let mut line_h_offset = 0;
                 let mut line_w = 0;
@@ -143,14 +154,17 @@ pub enum ShiftMode {
 enum DrawCommand {
     Play,
     Pause,
-    AwaitFrame,
     SetShiftMode(ShiftMode),
     Stop,
+}
+pub enum DrawEvent {
+    Disconnected,
+    Reconnected,
 }
 
 struct AnimState {
     ticks: usize,
-    next_update: SystemTime,
+    next_update: Instant,
 }
 struct ScrollState {
     x: isize,
@@ -175,36 +189,51 @@ const OLED_SHIFTS: [(isize, isize); 9] = [
     (-1, -1),
 ];
 
+const RECONNECT_PERIOD: Duration = Duration::from_secs(1);
+
 fn run_draw_device_thread(
-    dev: Device,
+    mut dev: Device,
     layers: Arc<Mutex<LayerMap>>,
     cmd_receiver: Receiver<DrawCommand>,
-    frame_sender: Sender<()>,
+    event_sender: Sender<DrawEvent>,
     fps: usize,
 ) {
     let frame_delay = Duration::from_nanos(1_000_000_000 / fps as u64);
     let mut prev_screen = Bitmap::new(0, 0, false);
-    let mut signal_update = false;
     let mut playing = false;
     let mut oled_shift = 0;
-    let mut last_shift = SystemTime::now();
+    let mut last_shift = Instant::now();
     let mut shift_mode = ShiftMode::Off;
+    let mut connected = true;
+    let mut last_connect_attempt = Instant::now();
     loop {
-        let time = SystemTime::now();
+        let time = Instant::now();
+        let mut stop_after_frame = false;
         while let Ok(cmd) = cmd_receiver.try_recv() {
             match cmd {
                 DrawCommand::Play => playing = true,
                 DrawCommand::Pause => playing = false,
-                DrawCommand::AwaitFrame => signal_update = true,
                 DrawCommand::SetShiftMode(mode) => shift_mode = mode,
-                DrawCommand::Stop => return,
+                DrawCommand::Stop => stop_after_frame = true,
             }
         }
-        if playing {
+
+        // Attempt to reconnect
+        if !connected && time.duration_since(last_connect_attempt) >= RECONNECT_PERIOD {
+            last_connect_attempt = time;
+            if dev.reconnect().is_ok() {
+                connected = true;
+                event_sender.send(DrawEvent::Reconnected).unwrap();
+            }
+        }
+
+        // Render frame
+        if connected && playing {
+            // Handle OLED shifts
             let (shift_x, shift_y) = match shift_mode {
                 ShiftMode::Off => (0, 0),
                 ShiftMode::Simple => {
-                    if time.duration_since(last_shift).unwrap() >= OLED_SHIFT_PERIOD {
+                    if time.duration_since(last_shift) >= OLED_SHIFT_PERIOD {
                         oled_shift = (oled_shift + 1) % OLED_SHIFTS.len();
                         last_shift = time;
                     }
@@ -212,6 +241,7 @@ fn run_draw_device_thread(
                 }
             };
 
+            // Update and blit each layer to the screen
             let mut screen = Bitmap::new(dev.width, dev.height, false);
             let mut layers = layers.lock().unwrap();
             for (_, state) in layers.iter_mut() {
@@ -256,17 +286,29 @@ fn run_draw_device_thread(
                     }
                 }
             }
+
+            // Draw update
             if screen != prev_screen {
-                dev.draw(&screen, 0, 0).unwrap();
-                prev_screen = screen;
-            }
-            if signal_update {
-                signal_update = false;
-                frame_sender.send(()).unwrap();
+                if let Err(_err) = dev.draw(&screen, 0, 0) {
+                    if connected {
+                        connected = false;
+                        event_sender.send(DrawEvent::Disconnected).unwrap();
+                    }
+                } else {
+                    prev_screen = screen;
+                }
             }
             drop(layers);
         }
-        spin_sleep::sleep(frame_delay); // TODO: calculate how long to actually sleep for
+
+        if stop_after_frame {
+            break;
+        }
+
+        // Delay as long as needed based on how long frame rendering took (which will mostly depend on USB speed)
+        let frame_duration = Instant::now().duration_since(time);
+        // println!("frame: {:?}, {:?}", frame_duration, frame_delay);
+        spin_sleep::sleep(frame_delay.saturating_sub(frame_duration));
     }
 }
 
@@ -278,18 +320,18 @@ pub struct DrawDevice {
     layer_counter: usize,
     thread: Option<std::thread::JoinHandle<()>>,
     cmd_sender: Sender<DrawCommand>,
-    frame_recver: Receiver<()>,
-    texter: TextRenderer,
+    event_receiver: Receiver<DrawEvent>,
+    pub texter: TextRenderer,
 }
 impl DrawDevice {
     pub fn new(dev: Device, fps: usize) -> DrawDevice {
         let layers: Arc<Mutex<LayerMap>> = Default::default();
         let (cmd_sender, cmd_recver) = channel::<DrawCommand>();
-        let (frame_sender, frame_recver) = channel::<()>();
+        let (event_sender, event_receiver) = channel::<DrawEvent>();
         let c_layers = layers.clone();
         let (width, height) = (dev.width, dev.height);
         let thread = Some(std::thread::spawn(move || {
-            run_draw_device_thread(dev, c_layers, cmd_recver, frame_sender, fps)
+            run_draw_device_thread(dev, c_layers, cmd_recver, event_sender, fps)
         }));
         DrawDevice {
             width,
@@ -298,9 +340,15 @@ impl DrawDevice {
             layer_counter: 0,
             thread,
             cmd_sender,
-            frame_recver,
-            texter: TextRenderer::create(),
+            event_receiver,
+            texter: TextRenderer::new_pixel_operator(),
         }
+    }
+    pub fn try_event(&mut self) -> Option<DrawEvent> {
+        self.event_receiver.try_recv().ok()
+    }
+    pub fn poll_event(&mut self) -> DrawEvent {
+        self.event_receiver.recv().unwrap()
     }
     pub fn center_bitmap(&self, bitmap: &Bitmap) -> Pos {
         Pos {
@@ -317,7 +365,7 @@ impl DrawDevice {
                 layer,
                 anim: AnimState {
                     ticks: 0,
-                    next_update: SystemTime::now(),
+                    next_update: Instant::now(),
                 },
                 scroll: ScrollState { x: 0 },
             },
@@ -370,10 +418,6 @@ impl DrawDevice {
                 }
             })
             .collect()
-    }
-    pub fn await_frame(&mut self) {
-        self.cmd_sender.send(DrawCommand::AwaitFrame).unwrap();
-        self.frame_recver.recv().unwrap();
     }
     pub fn set_shift_mode(&mut self, mode: ShiftMode) {
         self.cmd_sender.send(DrawCommand::SetShiftMode(mode)).unwrap();
