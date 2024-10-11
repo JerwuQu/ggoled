@@ -48,6 +48,7 @@ struct ConfigFont {
 struct Config {
     show_time: bool,
     show_media: bool,
+    media_window_titles: bool,
     idle_timeout: bool,
     oled_shift: ConfigShiftMode,
     font: Option<ConfigFont>,
@@ -57,6 +58,7 @@ impl Default for Config {
         Self {
             show_time: true,
             show_media: true,
+            media_window_titles: false,
             idle_timeout: true,
             oled_shift: ConfigShiftMode::default(),
             font: None,
@@ -115,10 +117,19 @@ fn main() {
     if let Some(font) = &config.font {
         dev.texter = dialog_unwrap(TextRenderer::load_from_file(&font.path, font.size));
     }
+    let media_mgr = dialog_unwrap(MediaControl::new());
 
     // Create tray icon with menu
     let tm_time_check = CheckMenuItem::new("Show time", true, config.show_time, None);
-    let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
+    let tm_media_show_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
+    let tm_media_workarounds_check = CheckMenuItem::new(
+        "Use application-specific window titles",
+        true,
+        config.media_window_titles,
+        None,
+    );
+    let tm_media_settings =
+        Submenu::with_items("Media settings", config.show_media, &[&tm_media_workarounds_check]).unwrap();
     let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
     let tm_oledshift_off = CheckMenuItem::new("Off", true, false, None);
     let tm_oledshift_simple = CheckMenuItem::new("Simple", true, false, None);
@@ -132,7 +143,8 @@ fn main() {
         &MenuItem::new("ggoled", false, None),
         &PredefinedMenuItem::separator(),
         &tm_time_check,
-        &tm_media_check,
+        &tm_media_show_check,
+        &tm_media_settings,
         &tm_idle_check,
         &Submenu::with_items("OLED screen shift", true, &[&tm_oledshift_off, &tm_oledshift_simple]).unwrap(),
         &PredefinedMenuItem::separator(),
@@ -166,8 +178,6 @@ fn main() {
     update_oledshift(&mut dev, config.oled_shift);
     dev.play();
 
-    let mgr = MediaControl::new();
-
     let menu_channel = MenuEvent::receiver();
     let mut last_time = Local::now() - TimeDelta::seconds(1);
     let mut last_media: Option<Media> = None;
@@ -188,8 +198,11 @@ fn main() {
         while let Ok(event) = menu_channel.try_recv() {
             if event.id == tm_time_check.id() {
                 config.show_time = tm_time_check.is_checked();
-            } else if event.id == tm_media_check.id() {
-                config.show_media = tm_media_check.is_checked();
+            } else if event.id == tm_media_show_check.id() {
+                config.show_media = tm_media_show_check.is_checked();
+                tm_media_settings.set_enabled(config.show_media);
+            } else if event.id == tm_media_workarounds_check.id() {
+                config.media_window_titles = tm_media_workarounds_check.is_checked();
             } else if event.id == tm_idle_check.id() {
                 config.idle_timeout = tm_idle_check.is_checked();
             } else if event.id == tm_oledshift_off.id() {
@@ -238,7 +251,16 @@ fn main() {
                 dev.clear_layers(); // clear screen when idle
             } else {
                 // Fetch media once a second (before pausing screen)
-                let media = if config.show_media { mgr.get_media() } else { None };
+                let media = if config.show_media {
+                    let system_media = media_mgr.get_media();
+                    if config.media_window_titles {
+                        media_mgr.get_from_window_titles(system_media.as_ref()).or(system_media)
+                    } else {
+                        system_media
+                    }
+                } else {
+                    None
+                };
 
                 dev.pause();
 
