@@ -49,7 +49,11 @@ impl Device {
             .collect();
 
         // We're expecting to find exactly two devices with different HID descriptors
-        if device_infos.len() != 2 {
+        if device_infos.is_empty() {
+            bail!("No matching devices connected");
+        } else if device_infos.len() < 2 {
+            bail!("Too few matching devices connected");
+        } else if device_infos.len() > 2 {
             bail!("Too many matching devices connected");
         }
 
@@ -59,7 +63,7 @@ impl Device {
             .map(|info| anyhow::Ok(info.open_device(&api)?))
             .collect::<anyhow::Result<Vec<_>>>()
         else {
-            bail!("Failed to connect to USB device!");
+            bail!("Failed to connect to USB device");
         };
 
         // Get HID reports for all devices
@@ -72,7 +76,7 @@ impl Device {
             })
             .collect::<anyhow::Result<Vec<_>>>()
         else {
-            bail!("Failed to get USB device HID reports!");
+            bail!("Failed to get USB device HID reports");
         };
 
         // Grab the two devices by their descriptors

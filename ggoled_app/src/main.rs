@@ -1,17 +1,18 @@
 #![windows_subsystem = "windows"]
 
 use chrono::{Local, TimeDelta, Timelike};
-use ggoled_draw::{DrawDevice, LayerId, ShiftMode};
+use ggoled_draw::{DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer};
 use ggoled_lib::Device;
 use media::{Media, MediaControl};
+use rfd::{MessageDialog, MessageLevel};
 use serde::{Deserialize, Serialize};
-use std::{mem::size_of, path::PathBuf, ptr::null_mut, thread::sleep, time::Duration};
+use std::{fmt::Debug, mem::size_of, path::PathBuf, ptr::null_mut, thread::sleep, time::Duration};
 use tray_icon::{
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     Icon, TrayIconBuilder,
 };
 use windows_sys::Win32::{
-    System::{Console::AllocConsole, SystemInformation::GetTickCount},
+    System::SystemInformation::GetTickCount,
     UI::{
         Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
         WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG},
@@ -36,6 +37,12 @@ impl ConfigShiftMode {
     }
 }
 
+#[derive(Serialize, Deserialize, Default)]
+struct ConfigFont {
+    path: PathBuf,
+    size: f32,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
@@ -43,6 +50,7 @@ struct Config {
     show_media: bool,
     idle_timeout: bool,
     oled_shift: ConfigShiftMode,
+    font: Option<ConfigFont>,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -51,6 +59,7 @@ impl Default for Config {
             show_media: true,
             idle_timeout: true,
             oled_shift: ConfigShiftMode::default(),
+            font: None,
         }
     }
 }
@@ -77,14 +86,37 @@ impl Config {
     }
 }
 
+// unwrap an error and show a MessageDialog if it fails
+pub fn dialog_unwrap<T, E: Debug>(res: Result<T, E>) -> T {
+    match res {
+        Ok(v) => v,
+        Err(e) => {
+            let str = format!("Error: {:?}", e);
+            MessageDialog::new()
+                .set_level(MessageLevel::Error)
+                .set_title("ggoled")
+                .set_description(&str)
+                .show();
+            panic!("dialog_unwrap: {}", str);
+        }
+    }
+}
+
 fn main() {
     #[cfg(debug_assertions)]
     {
+        use windows_sys::Win32::System::Console::AllocConsole;
         unsafe { AllocConsole() };
     }
 
+    // Initial loading
     let mut config = Config::load();
+    let mut dev = DrawDevice::new(dialog_unwrap(Device::connect()), 30);
+    if let Some(font) = &config.font {
+        dev.texter = dialog_unwrap(TextRenderer::load_from_file(&font.path, font.size));
+    }
 
+    // Create tray icon with menu
     let tm_time_check = CheckMenuItem::new("Show time", true, config.show_time, None);
     let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
     let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
@@ -96,7 +128,7 @@ fn main() {
         dev.set_shift_mode(mode.to_api());
     };
     let tm_quit = MenuItem::new("Quit", true, None);
-    let tray_menu = Menu::with_items(&[
+    let tray_menu = dialog_unwrap(Menu::with_items(&[
         &MenuItem::new("ggoled", false, None),
         &PredefinedMenuItem::separator(),
         &tm_time_check,
@@ -105,24 +137,32 @@ fn main() {
         &Submenu::with_items("OLED screen shift", true, &[&tm_oledshift_off, &tm_oledshift_simple]).unwrap(),
         &PredefinedMenuItem::separator(),
         &tm_quit,
-    ])
-    .unwrap();
-    let icon = {
-        let icon_png = include_bytes!("../ggoled.png");
-        let icon_rgba = image::load_from_memory(icon_png)
-            .unwrap()
-            .resize(32, 32, image::imageops::FilterType::Lanczos3)
-            .to_rgba8();
-        Icon::from_rgba(icon_rgba.to_vec(), icon_rgba.width(), icon_rgba.height()).unwrap()
-    };
-    let _tray = TrayIconBuilder::new()
+    ]));
+
+    let ggoled_normal_rgba = image::load_from_memory(include_bytes!("../assets/ggoled.png"))
+        .unwrap()
+        .resize(32, 32, image::imageops::FilterType::Lanczos3)
+        .to_rgba8();
+    let ggoled_error_rgba = image::load_from_memory(include_bytes!("../assets/ggoled_error.png"))
+        .unwrap()
+        .resize(32, 32, image::imageops::FilterType::Lanczos3)
+        .to_rgba8();
+    let tray = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
         .with_tooltip("ggoled")
-        .with_icon(icon)
         .build()
         .unwrap();
 
-    let mut dev = DrawDevice::new(Device::connect().unwrap(), 30);
+    let update_connection = |con: bool| {
+        let rgba = if con { &ggoled_normal_rgba } else { &ggoled_error_rgba };
+        tray.set_icon(Some(
+            // NOTE: because tray-icon consumes the icon, we have to re-create it
+            Icon::from_rgba(rgba.to_vec(), rgba.width(), rgba.height()).unwrap(),
+        ))
+        .unwrap();
+    };
+    update_connection(true);
+
     update_oledshift(&mut dev, config.oled_shift);
     dev.play();
 
@@ -166,7 +206,15 @@ fn main() {
             config_updated = true;
         }
         if config_updated {
-            config.save().unwrap();
+            dialog_unwrap(config.save());
+        }
+
+        // Handle draw events
+        while let Some(event) = dev.try_event() {
+            match event {
+                DrawEvent::Disconnected => update_connection(false),
+                DrawEvent::Reconnected => update_connection(true),
+            }
         }
 
         // Update layers every second
@@ -214,6 +262,8 @@ fn main() {
                     last_media = media;
                 }
 
+                // TODO: show icon if headset was recently connected/disconnected
+
                 dev.play();
             }
         }
@@ -223,5 +273,4 @@ fn main() {
 
     // Draw a blank frame when quitting
     dev.clear_layers();
-    dev.await_frame();
 }
