@@ -197,11 +197,15 @@ fn main() {
             dialog_unwrap(config.save());
         }
 
-        // Handle draw events
+        // Handle events
         while let Some(event) = dev.try_event() {
+            println!("event: {:?}", event);
             match event {
-                DrawEvent::Disconnected => update_connection(false),
-                DrawEvent::Reconnected => update_connection(true),
+                DrawEvent::DeviceDisconnected => update_connection(false),
+                DrawEvent::DeviceReconnected => update_connection(true),
+                DrawEvent::DeviceEvent(event) => match event {
+                    _ => {}
+                },
             }
         }
 

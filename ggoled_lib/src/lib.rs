@@ -20,6 +20,7 @@ struct ReportDrawable<'a> {
     src_y: usize,
 }
 
+#[derive(Debug)]
 pub enum DeviceEvent {
     VolumeChanged { volume: u8 },
     BatteryChanged { headset: u8, charging: u8 },
@@ -199,13 +200,14 @@ impl Device {
     }
 
     fn parse_event(buf: &[u8; 64]) -> Option<DeviceEvent> {
-        println!("got: {:x?}", buf);
+        #[cfg(debug_assertions)]
+        println!("parse_event: {:x?}", buf);
         if buf[0] != 7 {
             return None;
         }
         Some(match buf[1] {
             0x25 => DeviceEvent::VolumeChanged {
-                volume: 38u8.saturating_sub(buf[3]),
+                volume: 0x38u8.saturating_sub(buf[2]),
             },
             // Connection/Disconnection: 0xb5 => {}
             0xb7 => DeviceEvent::BatteryChanged {
@@ -217,10 +219,27 @@ impl Device {
         })
     }
 
-    /// Poll events from the device.
-    pub fn poll(&self) -> anyhow::Result<Option<DeviceEvent>> {
+    /// Poll events from the device. This blocks until an event is returned.
+    pub fn poll_event(&self) -> anyhow::Result<Option<DeviceEvent>> {
         let mut buf = [0u8; 64];
-        _ = self.info_dev.read(&mut buf).unwrap();
+        self.info_dev.set_blocking_mode(true)?;
+        _ = self.info_dev.read(&mut buf)?;
         Ok(Self::parse_event(&buf))
+    }
+
+    /// Return any pending events from the device. Non-blocking.
+    pub fn get_events(&self) -> anyhow::Result<Vec<DeviceEvent>> {
+        self.info_dev.set_blocking_mode(false)?;
+        let mut events = vec![];
+        loop {
+            let mut buf = [0u8; 64];
+            let len = self.info_dev.read(&mut buf)?;
+            if len == 0 {
+                break;
+            } else if let Some(event) = Self::parse_event(&buf) {
+                events.push(event);
+            }
+        }
+        Ok(events)
     }
 }
