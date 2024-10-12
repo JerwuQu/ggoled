@@ -1,24 +1,18 @@
 #![windows_subsystem = "windows"]
 
+mod os;
+
 use chrono::{Local, TimeDelta, Timelike};
 use ggoled_draw::{DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer};
 use ggoled_lib::Device;
-use media::{Media, MediaControl};
+use os::{dispatch_system_events, get_idle_seconds, Media, MediaControl};
 use rfd::{MessageDialog, MessageLevel};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, mem::size_of, path::PathBuf, ptr::null_mut, thread::sleep, time::Duration};
+use std::{fmt::Debug, path::PathBuf, thread::sleep, time::Duration};
 use tray_icon::{
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     Icon, TrayIconBuilder,
 };
-use windows_sys::Win32::{
-    System::SystemInformation::GetTickCount,
-    UI::{
-        Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
-        WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG},
-    },
-};
-mod media;
 
 const IDLE_TIMEOUT_SECS: usize = 60;
 
@@ -175,13 +169,7 @@ fn main() {
     let mut media_layers: Vec<LayerId> = vec![];
     'main: loop {
         // Window event loop is required to get tray-icon working
-        unsafe {
-            let mut msg: MSG = std::mem::zeroed();
-            while PeekMessageW(&mut msg, null_mut(), 0, 0, 1) > 0 {
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }
+        dispatch_system_events();
 
         // Handle tray menu events
         let mut config_updated = false;
@@ -223,17 +211,7 @@ fn main() {
             last_time = time;
 
             // Check if idle
-            let idle_seconds = unsafe {
-                let mut lastinput = LASTINPUTINFO {
-                    cbSize: size_of::<LASTINPUTINFO>() as u32,
-                    dwTime: 0,
-                };
-                if GetLastInputInfo(&mut lastinput) != 0 {
-                    ((GetTickCount() - lastinput.dwTime) / 1000) as usize
-                } else {
-                    0
-                }
-            };
+            let idle_seconds = get_idle_seconds();
             if config.idle_timeout && idle_seconds >= IDLE_TIMEOUT_SECS {
                 dev.clear_layers(); // clear screen when idle
             } else {

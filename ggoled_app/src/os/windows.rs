@@ -1,12 +1,16 @@
+use super::Media;
+use std::{mem::size_of, ptr::null_mut};
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionManager, GlobalSystemMediaTransportControlsSessionPlaybackStatus,
 };
+use windows_sys::Win32::{
+    System::SystemInformation::GetTickCount,
+    UI::{
+        Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
+        WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG},
+    },
+};
 
-#[derive(PartialEq)]
-pub struct Media {
-    pub title: String,
-    pub artist: String,
-}
 pub struct MediaControl {
     mgr: GlobalSystemMediaTransportControlsSessionManager,
 }
@@ -34,5 +38,29 @@ impl MediaControl {
         })()
         .ok()
         .flatten()
+    }
+}
+
+pub fn dispatch_system_events() {
+    unsafe {
+        let mut msg: MSG = std::mem::zeroed();
+        while PeekMessageW(&mut msg, null_mut(), 0, 0, 1) > 0 {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+}
+
+pub fn get_idle_seconds() -> usize {
+    unsafe {
+        let mut lastinput = LASTINPUTINFO {
+            cbSize: size_of::<LASTINPUTINFO>() as u32,
+            dwTime: 0,
+        };
+        if GetLastInputInfo(&mut lastinput) != 0 {
+            ((GetTickCount() - lastinput.dwTime) / 1000) as usize
+        } else {
+            0
+        }
     }
 }
