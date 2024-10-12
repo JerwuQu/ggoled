@@ -1,5 +1,8 @@
+// This is a wrapper around `ggoled_lib` that has high-level draw functions and additional events.
+// Heavily specialised for `ggoled_cli` and `ggoled_app`, and is therefore not recommended for general use.
+
 use anyhow::bail;
-use ggoled_lib::{bitmap::BitVec, Bitmap, Device};
+use ggoled_lib::{bitmap::BitVec, Bitmap, Device, DeviceEvent};
 use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
 use rusttype::{point, Font, Scale};
 use std::{
@@ -157,9 +160,12 @@ enum DrawCommand {
     SetShiftMode(ShiftMode),
     Stop,
 }
+
+#[derive(Debug)]
 pub enum DrawEvent {
-    Disconnected,
-    Reconnected,
+    DeviceDisconnected,
+    DeviceReconnected,
+    DeviceEvent(DeviceEvent),
 }
 
 struct AnimState {
@@ -223,7 +229,7 @@ fn run_draw_device_thread(
             last_connect_attempt = time;
             if dev.reconnect().is_ok() {
                 connected = true;
-                event_sender.send(DrawEvent::Reconnected).unwrap();
+                event_sender.send(DrawEvent::DeviceReconnected).unwrap();
             }
         }
 
@@ -292,7 +298,7 @@ fn run_draw_device_thread(
                 if let Err(_err) = dev.draw(&screen, 0, 0) {
                     if connected {
                         connected = false;
-                        event_sender.send(DrawEvent::Disconnected).unwrap();
+                        event_sender.send(DrawEvent::DeviceDisconnected).unwrap();
                     }
                 } else {
                     prev_screen = screen;
@@ -301,6 +307,19 @@ fn run_draw_device_thread(
             drop(layers);
         }
 
+        // Get device events and pass back to DrawDevice
+        if connected {
+            let events = dev.get_events().unwrap_or_else(|_| {
+                connected = false;
+                event_sender.send(DrawEvent::DeviceDisconnected).unwrap();
+                vec![]
+            });
+            for event in events {
+                event_sender.send(DrawEvent::DeviceEvent(event)).unwrap();
+            }
+        }
+
+        // Stop
         if stop_after_frame {
             break;
         }
