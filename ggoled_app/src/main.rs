@@ -120,6 +120,7 @@ fn main() {
     let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
     let tm_oledshift_off = CheckMenuItem::new("Off", true, false, None);
     let tm_oledshift_simple = CheckMenuItem::new("Simple", true, false, None);
+    // TODO: remove all these closures and create a struct instead
     let update_oledshift = |dev: &mut DrawDevice, mode: ConfigShiftMode| {
         tm_oledshift_off.set_checked(matches!(mode, ConfigShiftMode::Off));
         tm_oledshift_simple.set_checked(matches!(mode, ConfigShiftMode::Simple));
@@ -222,6 +223,9 @@ fn main() {
                 DrawEvent::DeviceEvent(event) => match event {
                     ggoled_lib::DeviceEvent::HeadsetConnection { connected } => {
                         if config.show_notifications {
+                            if let Some(id) = notif_layer {
+                                dev.remove_layer(id);
+                            }
                             notif_layer = Some(
                                 dev.add_layer(ggoled_draw::DrawLayer::Image {
                                     bitmap: (if connected {
