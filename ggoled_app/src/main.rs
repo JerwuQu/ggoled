@@ -3,18 +3,19 @@
 mod os;
 
 use chrono::{Local, TimeDelta, Timelike};
-use ggoled_draw::{DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer};
+use ggoled_draw::{bitmap_from_memory, DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer};
 use ggoled_lib::Device;
 use os::{dispatch_system_events, get_idle_seconds, Media, MediaControl};
 use rfd::{MessageDialog, MessageLevel};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, path::PathBuf, thread::sleep, time::Duration};
+use std::{fmt::Debug, path::PathBuf, sync::Arc, thread::sleep, time::Duration};
 use tray_icon::{
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     Icon, TrayIconBuilder,
 };
 
 const IDLE_TIMEOUT_SECS: usize = 60;
+const NOTIF_DUR: Duration = Duration::from_secs(5);
 
 #[derive(Serialize, Deserialize, Default, Clone, Copy)]
 enum ConfigShiftMode {
@@ -40,20 +41,22 @@ struct ConfigFont {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
+    font: Option<ConfigFont>,
     show_time: bool,
     show_media: bool,
     idle_timeout: bool,
     oled_shift: ConfigShiftMode,
-    font: Option<ConfigFont>,
+    show_notifications: bool,
 }
 impl Default for Config {
     fn default() -> Self {
         Self {
+            font: None,
             show_time: true,
             show_media: true,
             idle_timeout: true,
             oled_shift: ConfigShiftMode::default(),
-            font: None,
+            show_notifications: true,
         }
     }
 }
@@ -113,6 +116,7 @@ fn main() {
     // Create tray icon with menu
     let tm_time_check = CheckMenuItem::new("Show time", true, config.show_time, None);
     let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
+    let tm_notif_check = CheckMenuItem::new("Show notifications", true, config.show_notifications, None);
     let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
     let tm_oledshift_off = CheckMenuItem::new("Off", true, false, None);
     let tm_oledshift_simple = CheckMenuItem::new("Simple", true, false, None);
@@ -127,6 +131,7 @@ fn main() {
         &PredefinedMenuItem::separator(),
         &tm_time_check,
         &tm_media_check,
+        &tm_notif_check,
         &tm_idle_check,
         &Submenu::with_items("OLED screen shift", true, &[&tm_oledshift_off, &tm_oledshift_simple]).unwrap(),
         &PredefinedMenuItem::separator(),
@@ -156,17 +161,26 @@ fn main() {
         .unwrap();
     };
     update_connection(true);
-
     update_oledshift(&mut dev, config.oled_shift);
-    dev.play();
 
+    // Load icons
+    let icon_hs_connect =
+        Arc::new(bitmap_from_memory(include_bytes!("../assets/headset_connected.png"), 0x80).unwrap());
+    let icon_hs_disconnect =
+        Arc::new(bitmap_from_memory(include_bytes!("../assets/headset_disconnected.png"), 0x80).unwrap());
+
+    // State
     let mgr = MediaControl::new();
-
     let menu_channel = MenuEvent::receiver();
     let mut last_time = Local::now() - TimeDelta::seconds(1);
     let mut last_media: Option<Media> = None;
     let mut time_layers: Vec<LayerId> = vec![];
     let mut media_layers: Vec<LayerId> = vec![];
+    let mut notif_layer: Option<LayerId> = None;
+    let mut notif_expiry = Local::now();
+
+    // Go!
+    dev.play();
     'main: loop {
         // Window event loop is required to get tray-icon working
         dispatch_system_events();
@@ -178,6 +192,8 @@ fn main() {
                 config.show_time = tm_time_check.is_checked();
             } else if event.id == tm_media_check.id() {
                 config.show_media = tm_media_check.is_checked();
+            } else if event.id == tm_notif_check.id() {
+                config.show_notifications = tm_notif_check.is_checked();
             } else if event.id == tm_idle_check.id() {
                 config.idle_timeout = tm_idle_check.is_checked();
             } else if event.id == tm_oledshift_off.id() {
@@ -204,6 +220,23 @@ fn main() {
                 DrawEvent::DeviceDisconnected => update_connection(false),
                 DrawEvent::DeviceReconnected => update_connection(true),
                 DrawEvent::DeviceEvent(event) => match event {
+                    ggoled_lib::DeviceEvent::HeadsetConnection { connected } => {
+                        if config.show_notifications {
+                            notif_layer = Some(
+                                dev.add_layer(ggoled_draw::DrawLayer::Image {
+                                    bitmap: (if connected {
+                                        &icon_hs_connect
+                                    } else {
+                                        &icon_hs_disconnect
+                                    })
+                                    .clone(),
+                                    x: 8,
+                                    y: 8,
+                                }),
+                            );
+                            notif_expiry = Local::now() + NOTIF_DUR;
+                        }
+                    }
                     _ => {}
                 },
             }
@@ -213,6 +246,14 @@ fn main() {
         let time = Local::now();
         if time.second() != last_time.second() || config_updated {
             last_time = time;
+
+            // Remove expired notifications
+            if let Some(id) = notif_layer {
+                if time >= notif_expiry {
+                    dev.remove_layer(id);
+                    notif_layer = None;
+                }
+            }
 
             // Check if idle
             let idle_seconds = get_idle_seconds();

@@ -6,6 +6,7 @@ use ggoled_draw::DrawDevice;
 use ggoled_lib::Bitmap;
 use ggoled_lib::Device;
 use spin_sleep::sleep;
+use std::sync::Arc;
 use std::time::Instant;
 use std::{
     io::{stdin, Read},
@@ -198,7 +199,7 @@ fn main() {
             let bitmap = if path == "-" {
                 let mut buf = Vec::<u8>::new();
                 stdin().read_to_end(&mut buf).expect("Failed to read from stdin");
-                bitmap_from_memory(&buf, image_args.threshold).expect("Failed to read image from stdin")
+                Arc::new(bitmap_from_memory(&buf, image_args.threshold).expect("Failed to read image from stdin"))
             } else {
                 let mut frames = decode_frames(&path, image_args.threshold);
                 if frames.len() != 1 {
@@ -220,7 +221,7 @@ fn main() {
                 panic!("No image paths");
             }
             let period = framerate.map(|f| Duration::from_secs(1).div(f));
-            let bitmaps: Vec<(Bitmap, Duration)> = paths
+            let bitmaps: Vec<(Arc<Bitmap>, Duration)> = paths
                 .iter()
                 .flat_map(|path| {
                     decode_frames(path, image_args.threshold).into_iter().map(|frame| {
