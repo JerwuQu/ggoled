@@ -94,8 +94,9 @@ pub fn bitmap_from_memory(buf: &[u8], threshold: u8) -> anyhow::Result<Bitmap> {
     Ok(bitmap_from_dynimage(&img, threshold))
 }
 
+#[derive(Clone)]
 pub struct Frame {
-    pub bitmap: Bitmap,
+    pub bitmap: Arc<Bitmap>,
     pub delay: Option<Duration>,
 }
 
@@ -107,7 +108,7 @@ pub fn decode_frames(path: &str, threshold: u8) -> Vec<Frame> {
         frames
             .map(|frame| {
                 let frame = frame.expect("Failed to decode gif frame");
-                let bitmap = bitmap_from_image(frame.buffer(), threshold);
+                let bitmap = Arc::new(bitmap_from_image(frame.buffer(), threshold));
                 Frame {
                     bitmap,
                     delay: Some(Duration::from_millis(frame.delay().numer_denom_ms().0 as u64)),
@@ -116,7 +117,7 @@ pub fn decode_frames(path: &str, threshold: u8) -> Vec<Frame> {
             .collect()
     } else {
         let img = reader.decode().expect("Failed to decode image");
-        let bitmap = bitmap_from_dynimage(&img, threshold);
+        let bitmap = Arc::new(bitmap_from_dynimage(&img, threshold));
         vec![Frame { bitmap, delay: None }]
     }
 }
@@ -128,23 +129,21 @@ impl LayerId {
         LayerId(0)
     }
 }
-pub struct Pos {
-    pub x: isize,
-    pub y: isize,
-}
 
 pub enum DrawLayer {
     Image {
-        bitmap: Bitmap,
-        pos: Pos,
+        bitmap: Arc<Bitmap>,
+        x: isize,
+        y: isize,
     },
     Animation {
         frames: Vec<Frame>,
-        pos: Pos,
+        x: isize,
+        y: isize,
         follow_fps: bool,
     },
     Scroll {
-        bitmap: Bitmap,
+        bitmap: Arc<Bitmap>,
         y: isize,
     },
 }
@@ -252,15 +251,16 @@ fn run_draw_device_thread(
             let mut layers = layers.lock().unwrap();
             for (_, state) in layers.iter_mut() {
                 match &state.layer {
-                    DrawLayer::Image { bitmap, pos } => screen.blit(bitmap, pos.x + shift_x, pos.y + shift_y, false),
+                    DrawLayer::Image { bitmap, x, y } => screen.blit(bitmap, x + shift_x, y + shift_y, false),
                     DrawLayer::Animation {
                         frames,
-                        pos,
+                        x,
+                        y,
                         follow_fps,
                     } => {
                         if !frames.is_empty() {
                             let frame = &frames[state.anim.ticks % frames.len()];
-                            screen.blit(&frame.bitmap, pos.x + shift_x, pos.y + shift_y, false);
+                            screen.blit(&frame.bitmap, x + shift_x, y + shift_y, false);
                             if *follow_fps {
                                 state.anim.ticks += 1;
                             } else if time >= state.anim.next_update {
@@ -369,11 +369,11 @@ impl DrawDevice {
     pub fn poll_event(&mut self) -> DrawEvent {
         self.event_receiver.recv().unwrap()
     }
-    pub fn center_bitmap(&self, bitmap: &Bitmap) -> Pos {
-        Pos {
-            x: (self.width as isize - bitmap.w as isize) / 2,
-            y: (self.height as isize - bitmap.h as isize) / 2,
-        }
+    pub fn center_bitmap(&self, bitmap: &Bitmap) -> (isize, isize) {
+        (
+            (self.width as isize - bitmap.w as isize) / 2,
+            (self.height as isize - bitmap.h as isize) / 2,
+        )
     }
     fn add_layer_locked(&mut self, layers: &mut MutexGuard<'_, LayerMap>, layer: DrawLayer) -> LayerId {
         self.layer_counter += 1;
@@ -412,7 +412,12 @@ impl DrawDevice {
     pub fn add_text(&mut self, text: &str, x: Option<isize>, y: Option<isize>) -> Vec<LayerId> {
         let layers = self.layers.clone();
         let mut layers = layers.lock().unwrap();
-        let bitmaps = self.texter.render_lines(text);
+        let bitmaps: Vec<_> = self
+            .texter
+            .render_lines(text)
+            .into_iter()
+            .map(|b| Arc::new(b))
+            .collect();
         let line_height = self.texter.line_height();
         let center_y: isize = (self.height as isize - (line_height * bitmaps.len()) as isize) / 2;
         bitmaps
@@ -428,10 +433,8 @@ impl DrawDevice {
                         &mut layers,
                         DrawLayer::Image {
                             bitmap,
-                            pos: Pos {
-                                x: x.unwrap_or(center.x),
-                                y,
-                            },
+                            x: x.unwrap_or(center.0),
+                            y,
                         },
                     )
                 }
