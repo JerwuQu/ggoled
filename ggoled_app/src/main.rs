@@ -214,6 +214,8 @@ fn main() {
             dialog_unwrap(config.save());
         }
 
+        let mut force_redraw = config_updated;
+
         // Handle events
         while let Some(event) = dev.try_event() {
             println!("event: {:?}", event);
@@ -239,7 +241,14 @@ fn main() {
                                 }),
                             );
                             notif_expiry = Local::now() + NOTIF_DUR;
+                            force_redraw = true;
                         }
+                    }
+                    ggoled_lib::DeviceEvent::Battery {
+                        headset: _,
+                        charging: _,
+                    } => {
+                        // TODO
                     }
                     _ => {}
                 },
@@ -248,7 +257,7 @@ fn main() {
 
         // Update layers every second
         let time = Local::now();
-        if time.second() != last_time.second() || config_updated {
+        if time.second() != last_time.second() || force_redraw {
             last_time = time;
 
             // Remove expired notifications
@@ -262,7 +271,9 @@ fn main() {
             // Check if idle
             let idle_seconds = get_idle_seconds();
             if config.idle_timeout && idle_seconds >= IDLE_TIMEOUT_SECS {
+                // TODO: perhaps notifications should be kept?
                 dev.clear_layers(); // clear screen when idle
+                last_media = None; // reset media so we check again when not idle
             } else {
                 // Fetch media once a second (before pausing screen)
                 let media = if config.show_media { mgr.get_media() } else { None };
