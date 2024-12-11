@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.89"
-clap = { version = "4.4.10", features = ["derive"] }
+anyhow = "*"
+clap = { version = "*", features = ["derive"] }
 ggoled_lib = { path = "../ggoled_lib" }
 ggoled_draw = { path = "../ggoled_draw" }
-spin_sleep = "1.2.1"
+spin_sleep = "*"

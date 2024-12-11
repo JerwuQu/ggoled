@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod os;
 
@@ -100,12 +100,6 @@ pub fn dialog_unwrap<T, E: Debug>(res: Result<T, E>) -> T {
 }
 
 fn main() {
-    #[cfg(debug_assertions)]
-    {
-        use windows_sys::Win32::System::Console::AllocConsole;
-        unsafe { AllocConsole() };
-    }
-
     // Initial loading
     let mut config = Config::load();
     let mut dev = DrawDevice::new(dialog_unwrap(Device::connect()), 30);
@@ -184,6 +178,8 @@ fn main() {
     dev.play();
     'main: loop {
         // Window event loop is required to get tray-icon working
+        // TODO: handle system going to sleep
+        // TDOO: context menu shouldn't freeze rendering
         dispatch_system_events();
 
         // Handle tray menu events
