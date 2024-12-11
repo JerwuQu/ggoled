@@ -27,7 +27,7 @@ impl MediaControl {
                 == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
             if playing {
                 let request = session.TryGetMediaPropertiesAsync()?;
-                let media = request.get().unwrap();
+                let media = request.get()?;
                 anyhow::Ok(Some(Media {
                     title: media.Title()?.to_string_lossy(),
                     artist: media.Artist()?.to_string_lossy(),

@@ -6,14 +6,14 @@ impl MediaControl {
         MediaControl {}
     }
     pub fn get_media(&self) -> Option<Media> {
-        None // TODO: use MPRIS
+        todo!()
     }
 }
 
 pub fn dispatch_system_events() {
-    // TODO
+    todo!()
 }
 
 pub fn get_idle_seconds() -> usize {
-    0 // TODO
+    todo!()
 }

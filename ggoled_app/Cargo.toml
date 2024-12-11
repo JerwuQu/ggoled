@@ -4,18 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tray-icon = "0.19.0"
-image = { version = "0.24.7" }
-windows-sys = { version = "0.59.0", features = ["Win32_System_SystemInformation", "Win32_System_Console"] }
+tray-icon = "*"
+image = { version = "*" }
+windows-sys = { version = "*", features = ["Win32_System_SystemInformation", "Win32_System_Console"] }
 ggoled_lib = { path = "../ggoled_lib" }
 ggoled_draw = { path = "../ggoled_draw" }
-chrono = "0.4.38"
-windows = { version = "0.58.0", features = ["Media_Control"] }
-anyhow = "1.0.89"
-serde = { version = "1.0.210", features = ["derive"] }
-toml = "0.8.19"
-directories = "5.0.1"
-rfd = "0.15.0"
+chrono = "*"
+windows = { version = "*", features = ["Media_Control"] }
+anyhow = "*"
+serde = { version = "*", features = ["derive"] }
+toml = "*"
+directories = "*"
+rfd = "*"
 
 [build-dependencies]
-winresource = "0.1.17"
+winresource = "*"

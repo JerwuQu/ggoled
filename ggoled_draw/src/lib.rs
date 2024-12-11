@@ -3,7 +3,7 @@
 
 use anyhow::bail;
 use ggoled_lib::{bitmap::BitVec, Bitmap, Device, DeviceEvent};
-use image::{codecs::gif::GifDecoder, io::Reader as ImageReader, AnimationDecoder, ImageFormat};
+use image::{codecs::gif::GifDecoder, AnimationDecoder, ImageFormat, ImageReader};
 use rusttype::{point, Font, Scale};
 use std::{
     collections::BTreeMap,
@@ -412,12 +412,7 @@ impl DrawDevice {
     pub fn add_text(&mut self, text: &str, x: Option<isize>, y: Option<isize>) -> Vec<LayerId> {
         let layers = self.layers.clone();
         let mut layers = layers.lock().unwrap();
-        let bitmaps: Vec<_> = self
-            .texter
-            .render_lines(text)
-            .into_iter()
-            .map(|b| Arc::new(b))
-            .collect();
+        let bitmaps: Vec<_> = self.texter.render_lines(text).into_iter().map(Arc::new).collect();
         let line_height = self.texter.line_height();
         let center_y: isize = (self.height as isize - (line_height * bitmaps.len()) as isize) / 2;
         bitmaps
