@@ -2,6 +2,7 @@
 
 mod os;
 
+use anyhow::Context;
 use chrono::{Local, TimeDelta, Timelike};
 use ggoled_draw::{bitmap_from_memory, DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer};
 use ggoled_lib::Device;
@@ -99,6 +100,19 @@ pub fn dialog_unwrap<T, E: Debug>(res: Result<T, E>) -> T {
     }
 }
 
+fn load_icon(buf: &[u8]) -> Icon {
+    Icon::from_rgba(
+        image::load_from_memory(buf)
+            .unwrap()
+            .resize(32, 32, image::imageops::FilterType::Lanczos3)
+            .to_rgba8()
+            .to_vec(),
+        32,
+        32,
+    )
+    .unwrap()
+}
+
 fn main() {
     // Initial loading
     let mut config = Config::load();
@@ -133,27 +147,20 @@ fn main() {
         &tm_quit,
     ]));
 
-    let ggoled_normal_rgba = image::load_from_memory(include_bytes!("../assets/ggoled.png"))
-        .unwrap()
-        .resize(32, 32, image::imageops::FilterType::Lanczos3)
-        .to_rgba8();
-    let ggoled_error_rgba = image::load_from_memory(include_bytes!("../assets/ggoled_error.png"))
-        .unwrap()
-        .resize(32, 32, image::imageops::FilterType::Lanczos3)
-        .to_rgba8();
+    let ggoled_normal_icon = load_icon(include_bytes!("../assets/ggoled.png"));
+    let ggoled_error_icon = load_icon(include_bytes!("../assets/ggoled_error.png"));
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
         .with_tooltip("ggoled")
         .build()
+        .context("Failed to create tray icon")
         .unwrap();
 
     let update_connection = |con: bool| {
-        let rgba = if con { &ggoled_normal_rgba } else { &ggoled_error_rgba };
-        tray.set_icon(Some(
-            // NOTE: because tray-icon consumes the icon, we have to re-create it
-            Icon::from_rgba(rgba.to_vec(), rgba.width(), rgba.height()).unwrap(),
-        ))
-        .unwrap();
+        // NOTE: `tray.set_icon(...)` can fail due to timeout in some conditions: ignore error
+        _ = tray.set_icon(Some(
+            (if con { &ggoled_normal_icon } else { &ggoled_error_icon }).clone(),
+        ));
     };
     update_connection(true);
     update_oledshift(&mut dev, config.oled_shift);
