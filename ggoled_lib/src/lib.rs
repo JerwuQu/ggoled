@@ -59,39 +59,54 @@ impl Device {
             bail!("Too many matching devices connected");
         }
 
-        // Open all such devices
-        let Ok(mut devices) = device_infos
-            .iter()
-            .map(|info| anyhow::Ok(info.open_device(&api)?))
-            .collect::<anyhow::Result<Vec<_>>>()
-        else {
-            bail!("Failed to connect to USB device");
-        };
+        // On Linux, both devices can get put under the same hidraw interface, meaning we use the same device for both
+        let (oled_dev, info_dev) = if device_infos[0].path() == device_infos[1].path() {
+            let Ok(oled_dev) = device_infos[0].open_device(&api) else {
+                bail!("Failed to connect to USB device");
+            };
+            let Ok(info_dev) = device_infos[0].open_device(&api) else {
+                bail!("Failed to connect to USB device");
+            };
+            (oled_dev, info_dev)
 
-        // Get HID reports for all devices
-        let Ok(mut device_reports) = devices
-            .iter()
-            .map(|dev| {
-                let mut buf = [0u8; MAX_REPORT_DESCRIPTOR_SIZE];
-                let sz = dev.get_report_descriptor(&mut buf)?;
-                anyhow::Ok(Vec::from(&buf[..sz]))
-            })
-            .collect::<anyhow::Result<Vec<_>>>()
-        else {
-            bail!("Failed to get USB device HID reports");
-        };
+        // On Windows (and maybe some Linux variants), they are separate interfaces and have to be opened separately
+        } else {
+            // Open both devices
+            let Ok(mut devices) = device_infos
+                .iter()
+                .map(|info| anyhow::Ok(info.open_device(&api)?))
+                .collect::<anyhow::Result<Vec<_>>>()
+            else {
+                bail!("Failed to connect to USB device");
+            };
 
-        // Grab the two devices by their descriptors
-        let Some(oled_dev_idx) = device_reports.iter().position(|desc| desc[1] == 0xc0) else {
-            bail!("No OLED device found");
+            // Get descriptors
+            let Ok(mut device_reports) = devices
+                .iter()
+                .map(|dev| {
+                    let mut buf = [0u8; MAX_REPORT_DESCRIPTOR_SIZE];
+                    let sz = dev.get_report_descriptor(&mut buf)?;
+                    anyhow::Ok(Vec::from(&buf[..sz]))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()
+            else {
+                bail!("Failed to get USB device HID reports");
+            };
+
+            // Identify and open the two devices by their descriptors
+            let Some(oled_dev_idx) = device_reports.iter().position(|desc| desc[1] == 0xc0) else {
+                bail!("No OLED device found");
+            };
+            _ = device_reports.swap_remove(oled_dev_idx);
+            let oled_dev = devices.swap_remove(oled_dev_idx);
+            let Some(info_dev_idx) = device_reports.iter().position(|desc| desc[1] == 0x00) else {
+                bail!("No info device found");
+            };
+            _ = device_reports.swap_remove(info_dev_idx);
+            let info_dev = devices.swap_remove(info_dev_idx);
+
+            (oled_dev, info_dev)
         };
-        _ = device_reports.swap_remove(oled_dev_idx);
-        let oled_dev = devices.swap_remove(oled_dev_idx);
-        let Some(info_dev_idx) = device_reports.iter().position(|desc| desc[1] == 0x00) else {
-            bail!("No info device found");
-        };
-        _ = device_reports.swap_remove(info_dev_idx);
-        let info_dev = devices.swap_remove(info_dev_idx);
 
         Ok(Device {
             oled_dev,
