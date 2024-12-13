@@ -238,7 +238,7 @@ fn main() {
                     let now_time = Instant::now();
                     let next_frame = now_time + *delay;
                     let cx = (dev.width as isize - bitmap.w as isize) / 2;
-                    let cy = (dev.width as isize - bitmap.w as isize) / 2;
+                    let cy = (dev.height as isize - bitmap.h as isize) / 2;
                     let x = image_args.draw_args.screen_x.to_option().unwrap_or(cx);
                     let y = image_args.draw_args.screen_y.to_option().unwrap_or(cy);
                     dev.draw(bitmap, x, y).unwrap();
