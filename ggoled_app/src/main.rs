@@ -1,5 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(not(target_os = "windows"))]
+compile_error!("ggoled_app can currently only be built for Windows");
+
 mod os;
 
 use anyhow::Context;

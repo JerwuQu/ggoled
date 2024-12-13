@@ -4,7 +4,7 @@ Put custom graphics on your SteelSeries Arctis Nova Pro Base Station 128x64 OLED
 
 This utility implements the USB protocol, so you don't need SteelSeries GG/Engine Apps/GameSense, and it works on linux.
 
-For Windows there is also a desktop application that shows the current time and currently playing media.
+For Windows there is also a [desktop application](#desktop-application) that shows the current time and currently playing media.
 
 ## Animation showcase
 
@@ -24,14 +24,31 @@ This also showcases the burn-in you will get if not careful with OLEDs. The flic
 
 PRs and issues for similar devices are welcome!
 
+## Install
+
+For Windows you can download the latest builds either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
+
+Otherwise, install the Rust toolchain and run: `cargo install --git https://github.com/JerwuQu/ggoled.git ggoled`
+
+To run `ggoled` without requiring root on linux you first need to copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/` and run `udevadm control --reload` and `udevadm trigger` as root.
+
 ## CLI usage examples
 
-- `ggoled text "Hello, World!"`: draw some text onto your display.
-- `ggoled img cool_image.png`: draw an image onto your display.
+See `ggoled --help` for all commands and flags.
+
+- `ggoled brightness 1`: set the brightness to low.
+- `ggoled text "Hello, World!"`: draw some text onto the display.
+- `ggoled img cool_image.png`: draw an image onto the display.
 - `ggoled anim -r 10 -l 20 frame1.png frame2.png frame3.png`: play an animation at 10 fps, looped 20 times.
 - `ggoled anim animation.gif`: play a gif animation.
-- `ggoled brightness 1`: set the brightness to low.
-- See `ggoled --help` for more commands and flags.
+
+You also can play video animations by first extracting frames with `ffmpeg`:
+
+```sh
+ffmpeg -i YOURVIDEO.mp4 -r 20 -vf "scale=w=128:h=64:force_original_aspect_ratio=1" frames/%05d.png
+ggoled anim -r 20 frames/*  # bash
+ggoled anim -r 20 $(Get-ChildItem frames | % { $_.FullName })  # powershell
+```
 
 ## Desktop application
 
@@ -57,11 +74,3 @@ size = 16.0
 ```
 
 Then restart the application.
-
-## Install
-
-For Windows you can download the latest builds either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
-
-Otherwise, install the Rust toolchain and run: `cargo install --git https://github.com/JerwuQu/ggoled.git`
-
-To run without root on linux you'll first need to copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/` and run `udevadm control --reload` and `udevadm trigger` as root.
