@@ -211,6 +211,7 @@ fn run_draw_device_thread(
     let mut shift_mode = ShiftMode::Off;
     let mut connected = true;
     let mut last_connect_attempt = Instant::now();
+    let mut last_frame_time = Instant::now();
     loop {
         let time = Instant::now();
         let mut stop_after_frame = false;
@@ -294,7 +295,10 @@ fn run_draw_device_thread(
             }
 
             // Draw update
-            if screen != prev_screen {
+            let frame_time = Instant::now();
+            let force_redraw = frame_time.duration_since(last_frame_time) >= Duration::from_secs(1);
+            if screen != prev_screen || force_redraw {
+                last_frame_time = frame_time;
                 if let Err(_err) = dev.draw(&screen, 0, 0) {
                     if connected {
                         connected = false;

@@ -127,7 +127,7 @@ fn main() {
     // Create tray icon with menu
     let tm_time_check = CheckMenuItem::new("Show time", true, config.show_time, None);
     let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
-    let tm_notif_check = CheckMenuItem::new("Show notifications", true, config.show_notifications, None);
+    let tm_notif_check = CheckMenuItem::new("Show connection notifications", true, config.show_notifications, None);
     let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
     let tm_oledshift_off = CheckMenuItem::new("Off", true, false, None);
     let tm_oledshift_simple = CheckMenuItem::new("Simple", true, false, None);
