@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.94"
-bit-vec = "0.8.0"
-hidapi = "2.6.3"
+anyhow = "1.0"
+bit-vec = "0.8"
+hidapi = "2.6"
