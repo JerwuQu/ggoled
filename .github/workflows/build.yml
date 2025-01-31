@@ -13,28 +13,28 @@ jobs:
     runs-on: ${{ matrix.platform.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           key: ${{ matrix.platform.target }}-${{ matrix.platform.os }}
           path: |
             ~/.cargo
             target
       - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v0
+        uses: houseabsolute/actions-rust-cross@v1
         with:
           command: build
           target: ${{ matrix.platform.target }}
           args: "--locked --release"
           strip: true
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.target }}
           path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.cli }}
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.target }}
           path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.app }}
