@@ -149,12 +149,22 @@ enum Args {
         #[arg(help = "Brighness, 1-10", index = 1)]
         value: u8,
     },
+
+    #[command(about = "Dump devices list to stdout", hide = true)]
+    DumpDevices,
 }
 
 fn main() {
     let args = Args::parse();
-    let dev = Device::connect().unwrap();
+    match args {
+        Args::DumpDevices => {
+            Device::dump_devices();
+            return;
+        }
+        _ => {} // Handled later after device connection
+    }
 
+    let dev = Device::connect().unwrap();
     match args {
         Args::Clear => dev.draw(&Bitmap::new(dev.width, dev.height, false), 0, 0).unwrap(),
         Args::Fill => dev.draw(&Bitmap::new(dev.width, dev.height, true), 0, 0).unwrap(),
@@ -263,5 +273,6 @@ fn main() {
         Args::Brightness { value } => {
             dev.set_brightness(value).unwrap();
         }
+        Args::DumpDevices => {} // Handled earlier before device connection
     }
 }
