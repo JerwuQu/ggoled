@@ -15,18 +15,18 @@ This also showcases the burn-in you will get if not careful with OLEDs. The flic
 
 ## Supported Devices
 
-| Device                               | Supported                                           |
-| ------------------------------------ | --------------------------------------------------- |
-| SteelSeries Arctis Nova Pro Wired    | ✅                                                  |
-| SteelSeries Arctis Nova Pro Wireless | ✅                                                  |
-| SteelSeries Arctis Pro Wired         | 🧐 [#2](https://github.com/JerwuQu/ggoled/issues/2) |
-| SteelSeries Arctis Pro Wireless      | 🧐 [#2](https://github.com/JerwuQu/ggoled/issues/2) |
+| Device                               | Supported                                             |
+| ------------------------------------ | ----------------------------------------------------- |
+| SteelSeries Arctis Nova Pro Wired    | ✅                                                    |
+| SteelSeries Arctis Nova Pro Wireless | ✅                                                    |
+| SteelSeries Arctis Pro Wired         | 🧐 [#12](https://github.com/JerwuQu/ggoled/issues/12) |
+| SteelSeries Arctis Pro Wireless      | 🧐 [#12](https://github.com/JerwuQu/ggoled/issues/12) |
 
 PRs and issues for similar devices are welcome!
 
 ## Install
 
-For Windows you can download the latest builds either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
+For Windows you can download the latest builds either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions?query=branch%3Amaster) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
 
 Otherwise, install the Rust toolchain and run: `cargo install --git https://github.com/JerwuQu/ggoled.git ggoled`
 
