@@ -44,6 +44,7 @@ impl Device {
             .filter(|d| {
                 d.vendor_id() == 0x1038 // SteelSeries
         && [
+            0x1294, // Arctis Pro Wireless
             0x12cb, // Arctis Nova Pro Wired
             0x12e0, // Arctis Nova Pro Wireless
         ].contains(&d.product_id()) && d.interface_number() == 4
