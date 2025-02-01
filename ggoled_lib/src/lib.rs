@@ -116,6 +116,39 @@ impl Device {
         })
     }
 
+    /// Dump the full device tree info for all SteelSeries devices to stdout for debug purposes
+    pub fn dump_devices() {
+        let api = HidApi::new().unwrap();
+
+        let device_infos: Vec<_> = api
+            .device_list()
+            .filter(|d| d.vendor_id() == 0x1038) // SteelSeries
+            .collect();
+        if device_infos.is_empty() {
+            println!("No devices.");
+            return;
+        }
+
+        println!("-----");
+        for info in device_infos {
+            println!("pid={:#04x}", info.product_id());
+            println!("interface={}", info.interface_number());
+            println!("path={}", info.path().to_string_lossy());
+            println!("usage={}", info.usage());
+            if let Ok(dev) = info.open_device(&api) {
+                let mut buf = [0u8; MAX_REPORT_DESCRIPTOR_SIZE];
+                if let Ok(sz) = dev.get_report_descriptor(&mut buf) {
+                    println!("report desc sz={sz}, first 16 bytes: {:02x?}", &buf[0..16]);
+                } else {
+                    println!("getting report descriptor failed");
+                }
+            } else {
+                println!("opening device failed");
+            }
+            println!("-----");
+        }
+    }
+
     /// Reconnect to a device.
     pub fn reconnect(&mut self) -> anyhow::Result<()> {
         *self = Self::connect()?;
