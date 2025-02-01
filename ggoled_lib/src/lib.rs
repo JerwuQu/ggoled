@@ -1,7 +1,7 @@
 pub mod bitmap;
 use anyhow::bail;
 pub use bitmap::Bitmap;
-use hidapi::{HidApi, HidDevice, MAX_REPORT_DESCRIPTOR_SIZE};
+use hidapi::{DeviceInfo, HidApi, HidDevice, MAX_REPORT_DESCRIPTOR_SIZE};
 use std::cmp::min;
 
 // NOTE: these work for Arctis Nova Pro but might not for different products!
@@ -34,6 +34,26 @@ pub struct Device {
     pub height: usize,
 }
 impl Device {
+    fn is_steelseries(d: &DeviceInfo) -> bool {
+        d.vendor_id() == 0x1038 // SteelSeries
+    }
+    fn is_arctis(d: &DeviceInfo) -> bool {
+        [
+            // TODO: Arctis Pro Wired
+            0x1294, // Arctis Pro Wireless
+        ]
+        .contains(&d.product_id())
+            && d.interface_number() == 5
+    }
+    fn is_arctis_nova(d: &DeviceInfo) -> bool {
+        [
+            0x12cb, // Arctis Nova Pro Wired
+            0x12e0, // Arctis Nova Pro Wireless
+        ]
+        .contains(&d.product_id())
+            && d.interface_number() == 4
+    }
+
     /// Connect to a SteelSeries GG device.
     pub fn connect() -> anyhow::Result<Device> {
         let api = HidApi::new().unwrap();
@@ -41,14 +61,7 @@ impl Device {
         // Find all connected devices matching given Vendor/Product IDs and interface
         let device_infos: Vec<_> = api
             .device_list()
-            .filter(|d| {
-                d.vendor_id() == 0x1038 // SteelSeries
-        && [
-            0x1294, // Arctis Pro Wireless
-            0x12cb, // Arctis Nova Pro Wired
-            0x12e0, // Arctis Nova Pro Wireless
-        ].contains(&d.product_id()) && d.interface_number() == 4
-            })
+            .filter(|d| Self::is_steelseries(d) && (Self::is_arctis(d) || Self::is_arctis_nova(d)))
             .collect();
 
         // We're expecting to find exactly two devices with different HID descriptors
@@ -121,10 +134,7 @@ impl Device {
     pub fn dump_devices() {
         let api = HidApi::new().unwrap();
 
-        let device_infos: Vec<_> = api
-            .device_list()
-            .filter(|d| d.vendor_id() == 0x1038) // SteelSeries
-            .collect();
+        let device_infos: Vec<_> = api.device_list().filter(|d| Self::is_steelseries(d)).collect();
         if device_infos.is_empty() {
             println!("No devices.");
             return;
