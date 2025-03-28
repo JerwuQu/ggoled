@@ -46,6 +46,7 @@ impl Device {
         && [
             0x12cb, // Arctis Nova Pro Wired
             0x12e0, // Arctis Nova Pro Wireless
+            0x12e5, // Arctis Nova Pro Wireless (Xbox)
         ].contains(&d.product_id()) && d.interface_number() == 4
             })
             .collect();
@@ -131,6 +132,7 @@ impl Device {
 
         println!("-----");
         for info in device_infos {
+            println!("product={}", info.product_string().unwrap_or("?"));
             println!("pid={:#04x}", info.product_id());
             println!("interface={}", info.interface_number());
             println!("path={}", info.path().to_string_lossy());
