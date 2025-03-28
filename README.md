@@ -15,12 +15,13 @@ This also showcases the burn-in you will get if not careful with OLEDs. The flic
 
 ## Supported Devices
 
-| Device                               | Supported                                             |
-| ------------------------------------ | ----------------------------------------------------- |
-| SteelSeries Arctis Nova Pro Wired    | ✅                                                    |
-| SteelSeries Arctis Nova Pro Wireless | ✅                                                    |
-| SteelSeries Arctis Pro Wired         | 🧐 [#12](https://github.com/JerwuQu/ggoled/issues/12) |
-| SteelSeries Arctis Pro Wireless      | 🧐 [#12](https://github.com/JerwuQu/ggoled/issues/12) |
+| Device                                      | Supported                                             |
+| ------------------------------------------- | ----------------------------------------------------- |
+| SteelSeries Arctis Nova Pro Wired           | ✅                                                    |
+| SteelSeries Arctis Nova Pro Wireless        | ✅                                                    |
+| SteelSeries Arctis Nova Pro Wireless (Xbox) | ✅                                                    |
+| SteelSeries Arctis Pro Wired                | 🧐 [#12](https://github.com/JerwuQu/ggoled/issues/12) |
+| SteelSeries Arctis Pro Wireless             | 🧐 [#12](https://github.com/JerwuQu/ggoled/issues/12) |
 
 PRs and issues for similar devices are welcome!
 
