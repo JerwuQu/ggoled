@@ -315,5 +315,5 @@ fn main() {
         sleep(Duration::from_millis(10));
     }
     let dev = dev.stop();
-    dev.return_to_ui();
+    dev.return_to_ui().unwrap();
 }
