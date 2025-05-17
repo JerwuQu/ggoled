@@ -99,6 +99,9 @@ enum Args {
     #[command(about = "Fill the entire screen to white")]
     Fill,
 
+    #[command(about = "Return to SteelSeries UI")]
+    Return,
+
     #[command(about = "Draw some text")]
     Text {
         #[command(flatten)]
@@ -168,6 +171,7 @@ fn main() {
     match args {
         Args::Clear => dev.draw(&Bitmap::new(dev.width, dev.height, false), 0, 0).unwrap(),
         Args::Fill => dev.draw(&Bitmap::new(dev.width, dev.height, true), 0, 0).unwrap(),
+        Args::Return => dev.return_to_ui().unwrap(),
         Args::Text {
             text,
             draw_args,
