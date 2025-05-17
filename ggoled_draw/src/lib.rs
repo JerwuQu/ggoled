@@ -202,7 +202,7 @@ fn run_draw_device_thread(
     cmd_receiver: Receiver<DrawCommand>,
     event_sender: Sender<DrawEvent>,
     fps: usize,
-) {
+) -> Device {
     let frame_delay = Duration::from_nanos(1_000_000_000 / fps as u64);
     let mut prev_screen = Bitmap::new(0, 0, false);
     let mut playing = false;
@@ -333,6 +333,7 @@ fn run_draw_device_thread(
         // println!("frame: {:?}, {:?}", frame_duration, frame_delay);
         spin_sleep::sleep(frame_delay.saturating_sub(frame_duration));
     }
+    dev
 }
 
 type LayerMap = BTreeMap<LayerId, DrawLayerState>;
@@ -341,7 +342,7 @@ pub struct DrawDevice {
     height: usize,
     layers: Arc<Mutex<LayerMap>>,
     layer_counter: usize,
-    thread: Option<std::thread::JoinHandle<()>>,
+    thread: Option<std::thread::JoinHandle<Device>>,
     cmd_sender: Sender<DrawCommand>,
     event_receiver: Receiver<DrawEvent>,
     pub texter: TextRenderer,
@@ -366,6 +367,18 @@ impl DrawDevice {
             event_receiver,
             texter: TextRenderer::new_pixel_operator(),
         }
+    }
+    fn destroy(&mut self) -> Option<Device> {
+        if let Some(thread) = self.thread.take() {
+            self.clear_layers();
+            self.cmd_sender.send(DrawCommand::Stop).unwrap();
+            Some(thread.join().unwrap())
+        } else {
+            None
+        }
+    }
+    pub fn stop(mut self) -> Device {
+        self.destroy().unwrap()
     }
     pub fn try_event(&mut self) -> Option<DrawEvent> {
         self.event_receiver.try_recv().ok()
@@ -453,7 +466,6 @@ impl DrawDevice {
 }
 impl Drop for DrawDevice {
     fn drop(&mut self) {
-        self.cmd_sender.send(DrawCommand::Stop).unwrap();
-        self.thread.take().unwrap().join().unwrap();
+        self.destroy();
     }
 }
