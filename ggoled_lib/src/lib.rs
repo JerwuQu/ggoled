@@ -238,14 +238,23 @@ impl Device {
     /// Set screen brightness.
     pub fn set_brightness(&self, value: u8) -> anyhow::Result<()> {
         if value < 0x01 {
-            bail!("brightness too low!");
+            bail!("brightness too low");
         } else if value > 0x0a {
-            bail!("brightness too high!");
+            bail!("brightness too high");
         }
         let mut report = [0; 64];
         report[0] = 0x06; // hid report id
         report[1] = 0x85; // command id
         report[2] = value;
+        self.oled_dev.write(&report)?;
+        Ok(())
+    }
+
+    /// Return to SteelSeries UI.
+    pub fn return_to_ui(&self) -> anyhow::Result<()> {
+        let mut report = [0; 64];
+        report[0] = 0x06; // hid report id
+        report[1] = 0x95; // command id
         self.oled_dev.write(&report)?;
         Ok(())
     }
