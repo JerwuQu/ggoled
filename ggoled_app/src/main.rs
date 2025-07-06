@@ -52,6 +52,7 @@ struct Config {
     idle_timeout: bool,
     oled_shift: ConfigShiftMode,
     show_notifications: bool,
+    ignore_browser_media: bool,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -63,6 +64,7 @@ impl Default for Config {
             idle_timeout: true,
             oled_shift: ConfigShiftMode::default(),
             show_notifications: true,
+            ignore_browser_media: true,
         }
     }
 }
@@ -183,6 +185,7 @@ fn main() {
     let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
     let tm_cover_check = CheckMenuItem::new("Show album covers", true, config.show_cover, None);
     let tm_notif_check = CheckMenuItem::new("Show connection notifications", true, config.show_notifications, None);
+    let tm_ignore_browser_check = CheckMenuItem::new("Ignore browser media", true, config.ignore_browser_media, None);
     let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
     let tm_oledshift_off = CheckMenuItem::new("Off", true, config.oled_shift == ConfigShiftMode::Off, None);
     let tm_oledshift_simple = CheckMenuItem::new("Simple", true, config.oled_shift == ConfigShiftMode::Simple, None);
@@ -194,6 +197,7 @@ fn main() {
         &tm_media_check,
         &tm_cover_check,
         &tm_notif_check,
+        &tm_ignore_browser_check,
         &tm_idle_check,
         &Submenu::with_items("OLED screen shift", true, &[&tm_oledshift_off, &tm_oledshift_simple]).unwrap(),
         &PredefinedMenuItem::separator(),
@@ -236,6 +240,8 @@ fn main() {
                 config.show_cover = tm_cover_check.is_checked();
             } else if event.id == tm_notif_check.id() {
                 config.show_notifications = tm_notif_check.is_checked();
+            } else if event.id == tm_ignore_browser_check.id() {
+                config.ignore_browser_media = tm_ignore_browser_check.is_checked();
             } else if event.id == tm_idle_check.id() {
                 config.idle_timeout = tm_idle_check.is_checked();
             } else if event.id == tm_oledshift_off.id() {
@@ -313,7 +319,7 @@ fn oled_worker(rx: Receiver<WorkerMsg>, _tx: Sender<MainMsg>, mut config: Config
                 ggoled_draw::DrawEvent::DeviceEvent(device_event) => match device_event {
                     ggoled_lib::DeviceEvent::HeadsetConnection { connected } => {
                         // Only show notification if not in cover + media mode
-                        let media = if config.show_media { mgr.get_media() } else { None };
+                        let media = if config.show_media { mgr.get_media(config.ignore_browser_media) } else { None };
                         let should_show_cover = config.show_cover && config.show_media && media.is_some();
                         let has_usable_cover = if let Some(m) = &media {
                             m.cover.as_ref().map_or(false, |cover| !is_cover_useless(cover))
@@ -367,7 +373,7 @@ fn oled_worker(rx: Receiver<WorkerMsg>, _tx: Sender<MainMsg>, mut config: Config
                 cover_layer = None;
             } else {
                 // Fetch media information
-                let media = if config.show_media { mgr.get_media() } else { None };
+                let media = if config.show_media { mgr.get_media(config.ignore_browser_media) } else { None };
 
                 // Check if display needs updating
                 let current_media_info = media.as_ref().map_or(String::new(), |m| format!("{}_{}", m.title, m.artist));

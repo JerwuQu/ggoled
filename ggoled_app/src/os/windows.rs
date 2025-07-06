@@ -31,61 +31,86 @@ impl MediaControl {
         }
     }
 
-    pub fn get_media(&mut self) -> Option<Media> {
-        // Get basic media info (always fast)
-        let session = self.mgr.GetCurrentSession().ok()?;
-        let playing = session.GetPlaybackInfo().ok()?.PlaybackStatus().ok()?
-            == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+    pub fn get_media(&mut self, ignore_browser_media: bool) -> Option<Media> {
+        // Get all active sessions
+        let sessions = self.mgr.GetSessions().ok()?;
         
-        if !playing {
-            return None;
-        }
+        // Find the first session that's playing (and optionally non-browser)
+        for session in sessions {
+            let playing = session.GetPlaybackInfo().ok()?.PlaybackStatus().ok()?
+                == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+            
+            if !playing {
+                continue;
+            }
+            
+            // Check if this is a browser (only if ignore_browser_media is true)
+            if ignore_browser_media {
+                if let Ok(source_app_info) = session.SourceAppUserModelId() {
+                    let source_id = source_app_info.to_string_lossy().to_lowercase();
+                    
+                    // Filter out common browsers
+                    if source_id.contains("chrome") || 
+                       source_id.contains("firefox") || 
+                       source_id.contains("edge") || 
+                       source_id.contains("opera") || 
+                       source_id.contains("brave") || 
+                       source_id.contains("safari") ||
+                       source_id.contains("msedge") ||
+                       source_id.contains("vivaldi") {
+                        continue; // Skip browser sessions
+                    }
+                }
+            }
 
-        let request = session.TryGetMediaPropertiesAsync().ok()?;
-        let media = request.get().ok()?;
-        
-        let title = media.Title().ok()?.to_string_lossy();
-        let artist = media.Artist().ok()?.to_string_lossy();
-        let cache_key = format!("{}_{}", title, artist);
+            let request = session.TryGetMediaPropertiesAsync().ok()?;
+            let media = request.get().ok()?;
+            
+            let title = media.Title().ok()?.to_string_lossy();
+            let artist = media.Artist().ok()?.to_string_lossy();
+            let cache_key = format!("{}_{}", title, artist);
 
-        // Check cache first
-        if let Some(cached_cover) = self.cover_cache.get(&cache_key) {
-            return Some(Media {
-                title,
-                artist,
-                cover: Some(cached_cover.clone()),
-            });
-        }
+            // Check cache first
+            if let Some(cached_cover) = self.cover_cache.get(&cache_key) {
+                return Some(Media {
+                    title,
+                    artist,
+                    cover: Some(cached_cover.clone()),
+                });
+            }
 
-        // Check if we've failed this cover before
-        if self.failed_covers.contains(&cache_key) {
-            return Some(Media {
-                title,
-                artist,
-                cover: None,
-            });
-        }
-
-        // Check if we tried recently (avoid spamming)
-        if let Some(last_attempt) = self.last_cover_attempt.get(&cache_key) {
-            if last_attempt.elapsed() < Duration::from_secs(5) {
+            // Check if we've failed this cover before
+            if self.failed_covers.contains(&cache_key) {
                 return Some(Media {
                     title,
                     artist,
                     cover: None,
                 });
             }
+
+            // Check if we tried recently (avoid spamming)
+            if let Some(last_attempt) = self.last_cover_attempt.get(&cache_key) {
+                if last_attempt.elapsed() < Duration::from_secs(5) {
+                    return Some(Media {
+                        title,
+                        artist,
+                        cover: None,
+                    });
+                }
+            }
+
+            // Try to load cover with strict timeout
+            self.last_cover_attempt.insert(cache_key.clone(), Instant::now());
+            let cover = self.try_load_cover_fast(&media, &cache_key);
+
+            return Some(Media {
+                title,
+                artist,
+                cover,
+            });
         }
-
-        // Try to load cover with strict timeout
-        self.last_cover_attempt.insert(cache_key.clone(), Instant::now());
-        let cover = self.try_load_cover_fast(&media, &cache_key);
-
-        Some(Media {
-            title,
-            artist,
-            cover,
-        })
+        
+        None // No sessions found (or no non-browser sessions if filtering is enabled)
     }
 
     fn try_load_cover_fast(&mut self, media: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties, cache_key: &str) -> Option<Arc<ggoled_lib::Bitmap>> {
