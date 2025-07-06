@@ -4,9 +4,14 @@ pub use bitmap::Bitmap;
 use hidapi::{HidApi, HidDevice, MAX_REPORT_DESCRIPTOR_SIZE};
 use std::cmp::min;
 
+use std::sync::Mutex;
+
 // NOTE: these work for Arctis Nova Pro but might not for different products!
 const SCREEN_REPORT_SPLIT_SZ: usize = 64;
 const SCREEN_REPORT_SIZE: usize = 1024;
+
+// Global state to track recent events for validation
+static RECENT_EVENTS: Mutex<Vec<(u8, [u8; 8])>> = Mutex::new(Vec::new());
 
 type DrawReport = [u8; SCREEN_REPORT_SIZE];
 
@@ -266,17 +271,80 @@ impl Device {
         if buf[0] != 7 {
             return None;
         }
+        
+        // Store recent events for validation
+        {
+            let mut recent = RECENT_EVENTS.lock().unwrap();
+            recent.push((buf[1], [buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]]));
+            // Keep only last 5 events
+            if recent.len() > 5 {
+                recent.remove(0);
+            }
+        }
+        
         Some(match buf[1] {
             0x25 => DeviceEvent::Volume {
                 volume: 0x38u8.saturating_sub(buf[2]),
             },
-            0xb5 => DeviceEvent::HeadsetConnection { connected: buf[4] == 8 },
-            0xb7 => DeviceEvent::Battery {
-                headset: buf[2],
-                charging: buf[3],
-                // NOTE: there's a chance `buf[4]` represents the max value, but i don't have any other devices to test with
+            0xb5 => {
+                // Check if this is a valid headset power event by looking at patterns
+                // Only check buf[2]=4 and buf[4] (4=OFF, 8=ON), ignore buf[3] as it varies
+                let is_valid_power_event = buf[2] == 4 && (buf[4] == 4 || buf[4] == 8);
+                
+                if is_valid_power_event {
+                    // For ON events, wait for the next b7 event to validate
+                    if buf[4] == 8 {
+                        // This is a potential ON event, we'll validate it when we see the next b7
+                        // For now, store it but don't emit the event yet
+                        #[cfg(debug_assertions)]
+                        println!("Potential HeadsetConnection ON event, waiting for b7 validation: buf[2]={}, buf[3]={}, buf[4]={}, full_buf={:x?}", 
+                                buf[2], buf[3], buf[4], &buf[0..8]);
+                        return None; // Don't emit yet, wait for validation
+                    } else {
+                        // OFF events seem reliable, emit immediately
+                        #[cfg(debug_assertions)]
+                        println!("HeadsetConnection OFF event: buf[2]={}, buf[3]={}, buf[4]={}, full_buf={:x?}", 
+                                buf[2], buf[3], buf[4], &buf[0..8]);
+                        DeviceEvent::HeadsetConnection { connected: false }
+                    }
+                } else {
+                    #[cfg(debug_assertions)]
+                    println!("Filtered out headset event: not a valid power event (buf[2]={}, buf[3]={}, buf[4]={})", buf[2], buf[3], buf[4]);
+                    return None;
+                }
             },
-            _ => return None,
+            0xb7 => {
+                // Check if there was a recent b5 ON event that needs validation
+                let recent_events = RECENT_EVENTS.lock().unwrap();
+                let has_recent_b5_on = recent_events.iter().rev().take(3).any(|(event_type, event_buf)| {
+                    *event_type == 0xb5 && event_buf[2] == 4 && event_buf[4] == 8
+                });
+                
+                if has_recent_b5_on {
+                    // This b7 follows a b5 ON event, check if it's a valid pattern
+                    // Valid ON pattern: b7 with buf[2]=7 and buf[4]=8 (buf[3] can vary)
+                    if buf[2] == 7 && buf[4] == 8 {
+                        #[cfg(debug_assertions)]
+                        println!("Validated HeadsetConnection ON event via b7: buf[2]={}, buf[3]={}, buf[4]={}", buf[2], buf[3], buf[4]);
+                        return Some(DeviceEvent::HeadsetConnection { connected: true });
+                    } else {
+                        #[cfg(debug_assertions)]
+                        println!("Invalid b7 pattern, rejecting recent b5 ON event: buf[2]={}, buf[3]={}, buf[4]={}", buf[2], buf[3], buf[4]);
+                    }
+                }
+                
+                // Regular battery event
+                DeviceEvent::Battery {
+                    headset: buf[2],
+                    charging: buf[3],
+                    // NOTE: there's a chance `buf[4]` represents the max value, but i don't have any other devices to test with
+                }
+            },
+            _ => {
+                #[cfg(debug_assertions)]
+                println!("Unknown event code: 0x{:02x}, buf={:x?}", buf[1], &buf[0..8]);
+                return None;
+            }
         })
     }
 

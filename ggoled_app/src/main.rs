@@ -318,33 +318,35 @@ fn oled_worker(rx: Receiver<WorkerMsg>, _tx: Sender<MainMsg>, mut config: Config
                 ggoled_draw::DrawEvent::DeviceReconnected => {}
                 ggoled_draw::DrawEvent::DeviceEvent(device_event) => match device_event {
                     ggoled_lib::DeviceEvent::HeadsetConnection { connected } => {
-                        // Only show notification if not in cover + media mode
-                        let media = if config.show_media { mgr.get_media(config.ignore_browser_media) } else { None };
-                        let should_show_cover = config.show_cover && config.show_media && media.is_some();
-                        let has_usable_cover = if let Some(m) = &media {
-                            m.cover.as_ref().map_or(false, |cover| !is_cover_useless(cover))
-                        } else {
-                            false
-                        };
-                        let display_cover = should_show_cover && has_usable_cover;
-                        
-                        if config.show_notifications && !display_cover {
-                            if let Some(id) = notif_layer {
-                                dev.remove_layer(id);
+                        // Only show notification if not in cover + media mode and notifications are enabled
+                        if config.show_notifications {
+                            let media = if config.show_media { mgr.get_media(config.ignore_browser_media) } else { None };
+                            let should_show_cover = config.show_cover && config.show_media && media.is_some();
+                            let has_usable_cover = if let Some(m) = &media {
+                                m.cover.as_ref().map_or(false, |cover| !is_cover_useless(cover))
+                            } else {
+                                false
+                            };
+                            let display_cover = should_show_cover && has_usable_cover;
+                            
+                            if !display_cover {
+                                if let Some(id) = notif_layer {
+                                    dev.remove_layer(id);
+                                }
+                                notif_layer = Some(
+                                    dev.add_layer(ggoled_draw::DrawLayer::Image {
+                                        bitmap: (if connected {
+                                            &icon_hs_connect
+                                        } else {
+                                            &icon_hs_disconnect
+                                        })
+                                        .clone(),
+                                        x: 8,
+                                        y: 8,
+                                    }),
+                                );
+                                notif_expiry = Local::now() + Duration::from_secs(5);
                             }
-                            notif_layer = Some(
-                                dev.add_layer(ggoled_draw::DrawLayer::Image {
-                                    bitmap: (if connected {
-                                        &icon_hs_connect
-                                    } else {
-                                        &icon_hs_disconnect
-                                    })
-                                    .clone(),
-                                    x: 8,
-                                    y: 8,
-                                }),
-                            );
-                            notif_expiry = Local::now() + Duration::from_secs(5);
                         }
                     }
                     ggoled_lib::DeviceEvent::Volume { .. } => {}
@@ -371,6 +373,12 @@ fn oled_worker(rx: Receiver<WorkerMsg>, _tx: Sender<MainMsg>, mut config: Config
             if config.idle_timeout && idle_seconds >= IDLE_TIMEOUT_SECS {
                 dev.clear_layers();
                 cover_layer = None;
+                time_layers.clear();
+                media_layers.clear();
+                notif_layer = None;
+                // Force refresh on wake-up by resetting state
+                last_media_info = String::new();
+                last_config_state = String::new();
             } else {
                 // Fetch media information
                 let media = if config.show_media { mgr.get_media(config.ignore_browser_media) } else { None };
@@ -380,7 +388,9 @@ fn oled_worker(rx: Receiver<WorkerMsg>, _tx: Sender<MainMsg>, mut config: Config
                 let current_config_state = format!("{}{}{}", config.show_time, config.show_media, config.show_cover);
                 let media_changed = current_media_info != last_media_info;
                 let config_changed = current_config_state != last_config_state;
-                let need_update = media_changed || config_changed;                if need_update {
+                let need_update = media_changed || config_changed;
+                
+                if need_update {
                     dev.pause();
 
                     // Clear existing layers to prevent overlap
@@ -529,8 +539,6 @@ fn oled_worker(rx: Receiver<WorkerMsg>, _tx: Sender<MainMsg>, mut config: Config
                     
                     dev.play();
                 }
-
-                dev.play();
             }
         }
 
