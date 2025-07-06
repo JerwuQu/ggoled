@@ -10,7 +10,7 @@ windows-sys = { version = "*", features = ["Win32_System_SystemInformation", "Wi
 ggoled_lib = { path = "../ggoled_lib" }
 ggoled_draw = { path = "../ggoled_draw" }
 chrono = "*"
-windows = { version = "*", features = ["Media_Control"] }
+windows = { version = "*", features = ["Media_Control", "Storage_Streams"] }
 anyhow = "*"
 serde = { version = "*", features = ["derive"] }
 toml = "*"

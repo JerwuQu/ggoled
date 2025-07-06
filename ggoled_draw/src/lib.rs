@@ -40,6 +40,12 @@ impl TextRenderer {
         let v_metrics = self.font.v_metrics(self.scale());
         (v_metrics.ascent - v_metrics.descent).ceil() as usize
     }
+    pub fn set_size(&mut self, new_size: f32) {
+        self.size = new_size;
+    }
+    pub fn get_size(&self) -> f32 {
+        self.size
+    }
     pub fn render_lines(&self, text: &str) -> Vec<Bitmap> {
         let clean_text = text.replace('\r', "");
         let text_lines = clean_text.split('\n');
@@ -145,6 +151,12 @@ pub enum DrawLayer {
     Scroll {
         bitmap: Arc<Bitmap>,
         y: isize,
+    },
+    ScrollClipped {
+        bitmap: Arc<Bitmap>,
+        x: isize,
+        y: isize,
+        max_width: usize,
     },
 }
 
@@ -291,6 +303,33 @@ fn run_draw_device_thread(
                             state.scroll.x += scroll_w;
                         }
                     }
+                    DrawLayer::ScrollClipped { bitmap, x, y, max_width } => {
+                        const MARGIN: isize = 30;
+                        let scroll_w = bitmap.w as isize + MARGIN;
+                        let dupes = 1 + max_width / scroll_w as usize;
+                        for i in 0..=dupes {
+                            let blit_x = x + state.scroll.x + i as isize * scroll_w + shift_x;
+                            let blit_y = *y + shift_y;
+                            
+                            // Only blit if within the clipping bounds
+                            if blit_x < *x + *max_width as isize {
+                                // Create a clipped version if needed
+                                if blit_x + bitmap.w as isize > *x + *max_width as isize {
+                                    let clip_width = (*x + *max_width as isize - blit_x) as usize;
+                                    if clip_width > 0 && clip_width <= bitmap.w {
+                                        let clipped = bitmap.crop(0, 0, clip_width, bitmap.h);
+                                        screen.blit(&clipped, blit_x, blit_y, false);
+                                    }
+                                } else {
+                                    screen.blit(bitmap, blit_x, blit_y, false);
+                                }
+                            }
+                        }
+                        state.scroll.x -= 1;
+                        if state.scroll.x <= -scroll_w {
+                            state.scroll.x += scroll_w;
+                        }
+                    }
                 }
             }
 
@@ -427,6 +466,10 @@ impl DrawDevice {
         self.texter.line_height()
     }
     pub fn add_text(&mut self, text: &str, x: Option<isize>, y: Option<isize>) -> Vec<LayerId> {
+        self.add_text_with_max_width(text, x, y, None)
+    }
+    
+    pub fn add_text_with_max_width(&mut self, text: &str, x: Option<isize>, y: Option<isize>, max_width: Option<usize>) -> Vec<LayerId> {
         let layers = self.layers.clone();
         let mut layers = layers.lock().unwrap();
         let bitmaps: Vec<_> = self.texter.render_lines(text).into_iter().map(Arc::new).collect();
@@ -437,15 +480,33 @@ impl DrawDevice {
             .enumerate()
             .map(|(i, bitmap)| {
                 let y = y.unwrap_or(center_y) + (i * line_height) as isize;
-                if bitmap.w >= self.width {
-                    self.add_layer_locked(&mut layers, DrawLayer::Scroll { bitmap, y })
+                let effective_max_width = max_width.unwrap_or(self.width);
+                
+                if bitmap.w >= effective_max_width {
+                    // Use clipped scrolling when max_width is specified
+                    if let Some(max_w) = max_width {
+                        self.add_layer_locked(&mut layers, DrawLayer::ScrollClipped { 
+                            bitmap, 
+                            x: x.unwrap_or(0),
+                            y,
+                            max_width: max_w,
+                        })
+                    } else {
+                        self.add_layer_locked(&mut layers, DrawLayer::Scroll { bitmap, y })
+                    }
                 } else {
-                    let center = self.center_bitmap(&bitmap);
+                    let center_x = if max_width.is_some() {
+                        // If max_width is specified, don't center, use provided x or 0
+                        x.unwrap_or(0)
+                    } else {
+                        // Original centering behavior
+                        (self.width as isize - bitmap.w as isize) / 2
+                    };
                     self.add_layer_locked(
                         &mut layers,
                         DrawLayer::Image {
                             bitmap,
-                            x: x.unwrap_or(center.0),
+                            x: x.unwrap_or(center_x),
                             y,
                         },
                     )
