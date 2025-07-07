@@ -321,16 +321,11 @@ impl Device {
                 });
                 
                 if has_recent_b5_on {
-                    // This b7 follows a b5 ON event, check if it's a valid pattern
-                    // Valid ON pattern: b7 with buf[2]=7 and buf[4]=8 (buf[3] can vary)
-                    if buf[2] == 7 && buf[4] == 8 {
-                        #[cfg(debug_assertions)]
-                        println!("Validated HeadsetConnection ON event via b7: buf[2]={}, buf[3]={}, buf[4]={}", buf[2], buf[3], buf[4]);
-                        return Some(DeviceEvent::HeadsetConnection { connected: true });
-                    } else {
-                        #[cfg(debug_assertions)]
-                        println!("Invalid b7 pattern, rejecting recent b5 ON event: buf[2]={}, buf[3]={}, buf[4]={}", buf[2], buf[3], buf[4]);
-                    }
+                    // Any b7 event following a b5 ON event validates it
+                    // Real headset ON events are always followed by a b7, false positives are not
+                    #[cfg(debug_assertions)]
+                    println!("Validated HeadsetConnection ON event via b7 presence: buf[2]={}, buf[3]={}, buf[4]={}", buf[2], buf[3], buf[4]);
+                    return Some(DeviceEvent::HeadsetConnection { connected: true });
                 }
                 
                 // Regular battery event
