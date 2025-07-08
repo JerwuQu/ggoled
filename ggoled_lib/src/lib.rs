@@ -48,6 +48,7 @@ impl Device {
             0x12cd, // Arctis Nova Pro Wired (Xbox)
             0x12e0, // Arctis Nova Pro Wireless
             0x12e5, // Arctis Nova Pro Wireless (Xbox)
+            0x225d, // Arctis Nova Pro Wireless (Xbox White)
         ].contains(&d.product_id()) && d.interface_number() == 4
             })
             .collect();
