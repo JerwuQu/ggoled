@@ -22,9 +22,18 @@ struct ReportDrawable<'a> {
 
 #[derive(Debug)]
 pub enum DeviceEvent {
-    Volume { volume: u8 },
-    Battery { headset: u8, charging: u8 },
-    HeadsetConnection { connected: bool },
+    Volume {
+        volume: u8,
+    },
+    Battery {
+        headset: u8,
+        charging: u8,
+    },
+    HeadsetConnection {
+        wireless: bool,
+        bluetooth: bool,
+        bluetooth_on: bool,
+    },
 }
 
 pub struct Device {
@@ -271,11 +280,15 @@ impl Device {
             0x25 => DeviceEvent::Volume {
                 volume: 0x38u8.saturating_sub(buf[2]),
             },
-            0xb5 => DeviceEvent::HeadsetConnection { connected: buf[4] == 8 },
+            0xb5 => DeviceEvent::HeadsetConnection {
+                wireless: buf[4] == 8,
+                bluetooth: buf[3] == 1,
+                bluetooth_on: buf[2] == 4,
+            },
             0xb7 => DeviceEvent::Battery {
                 headset: buf[2],
                 charging: buf[3],
-                // NOTE: there's a chance `buf[4]` represents the max value, but i don't have any other devices to test with
+                // NOTE: there's a chance `buf[4]` represents either the max value or simply just `8` for connected
             },
             _ => return None,
         })

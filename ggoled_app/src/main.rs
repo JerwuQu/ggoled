@@ -183,6 +183,7 @@ fn main() {
     let mut media_layers: Vec<LayerId> = vec![];
     let mut notif_layer: Option<LayerId> = None;
     let mut notif_expiry = Local::now();
+    let mut is_connected = None; // TODO: probe on startup
 
     // Go!
     dev.play();
@@ -229,32 +230,29 @@ fn main() {
                 DrawEvent::DeviceDisconnected => update_connection(false),
                 DrawEvent::DeviceReconnected => update_connection(true),
                 DrawEvent::DeviceEvent(event) => match event {
-                    ggoled_lib::DeviceEvent::HeadsetConnection { connected } => {
-                        if config.show_notifications {
-                            if let Some(id) = notif_layer {
-                                dev.remove_layer(id);
+                    ggoled_lib::DeviceEvent::HeadsetConnection { wireless, .. } => {
+                        if Some(wireless) != is_connected {
+                            is_connected = Some(wireless);
+                            if config.show_notifications {
+                                if let Some(id) = notif_layer {
+                                    dev.remove_layer(id);
+                                }
+                                notif_layer = Some(
+                                    dev.add_layer(ggoled_draw::DrawLayer::Image {
+                                        bitmap: (if wireless {
+                                            &icon_hs_connect
+                                        } else {
+                                            &icon_hs_disconnect
+                                        })
+                                        .clone(),
+                                        x: 8,
+                                        y: 8,
+                                    }),
+                                );
+                                notif_expiry = Local::now() + NOTIF_DUR;
+                                force_redraw = true;
                             }
-                            notif_layer = Some(
-                                dev.add_layer(ggoled_draw::DrawLayer::Image {
-                                    bitmap: (if connected {
-                                        &icon_hs_connect
-                                    } else {
-                                        &icon_hs_disconnect
-                                    })
-                                    .clone(),
-                                    x: 8,
-                                    y: 8,
-                                }),
-                            );
-                            notif_expiry = Local::now() + NOTIF_DUR;
-                            force_redraw = true;
                         }
-                    }
-                    ggoled_lib::DeviceEvent::Battery {
-                        headset: _,
-                        charging: _,
-                    } => {
-                        // TODO
                     }
                     _ => {}
                 },
