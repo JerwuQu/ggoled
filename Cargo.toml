@@ -3,7 +3,12 @@ resolver = "2"
 members = [
     "ggoled_cli",
     "ggoled_lib",
-    "ggoled_app",
+    "ggoled_draw",
+    "ggoled_app", # Windows-only
+]
+default-members = [
+    "ggoled_cli",
+    "ggoled_lib",
     "ggoled_draw",
 ]
 

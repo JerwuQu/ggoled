@@ -2,6 +2,7 @@
   "editor.tabSize": 4,
   "editor.insertSpaces": true,
   "editor.formatOnSave": true,
-  "editor.rulers": [140],
-  "rust-analyzer.cargo.target": "x86_64-pc-windows-gnu",
+  "editor.rulers": [
+    140
+  ],
 }
