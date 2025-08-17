@@ -370,7 +370,6 @@ impl DrawDevice {
     }
     fn destroy(&mut self) -> Option<Device> {
         if let Some(thread) = self.thread.take() {
-            self.clear_layers();
             self.cmd_sender.send(DrawCommand::Stop).unwrap();
             Some(thread.join().unwrap())
         } else {

@@ -178,6 +178,7 @@ fn main() {
             delimiter,
         } => {
             let mut dev = DrawDevice::new(dev, 30);
+            // TODO: oneshot text should not try scrolling
             if let Some(text) = text {
                 dev.add_text(&text, draw_args.screen_x.to_option(), draw_args.screen_y.to_option());
                 dev.play();
