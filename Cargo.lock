@@ -1018,6 +1018,7 @@ dependencies = [
  "anyhow",
  "bit-vec",
  "hidapi",
+ "spin_sleep",
 ]
 
 [[package]]

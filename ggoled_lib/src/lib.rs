@@ -2,7 +2,7 @@ pub mod bitmap;
 use anyhow::bail;
 pub use bitmap::Bitmap;
 use hidapi::{HidApi, HidDevice, MAX_REPORT_DESCRIPTOR_SIZE};
-use std::cmp::min;
+use std::{cmp::min, time::Duration};
 
 // NOTE: these work for Arctis Nova Pro but might not for different products!
 const SCREEN_REPORT_SPLIT_SZ: usize = 64;
@@ -241,9 +241,25 @@ impl Device {
         let drawables = self.prepare_for_report(bitmap, x, y);
         for drawable in drawables {
             let report = self.create_report(&drawable);
-            self.oled_dev.send_feature_report(&report)?;
+            self.retry_report(&report)?;
         }
         Ok(())
+    }
+
+    fn retry_report(&self, data: &[u8]) -> anyhow::Result<()> {
+        let mut i: u64 = 0;
+        loop {
+            match self.oled_dev.send_feature_report(&data) {
+                Ok(_) => return Ok(()),
+                Err(err) => {
+                    if i == 10 {
+                        return Err(err.into());
+                    }
+                    i += 1;
+                    spin_sleep::sleep(Duration::from_millis(i.pow(2)));
+                }
+            }
+        }
     }
 
     /// Set screen brightness.
