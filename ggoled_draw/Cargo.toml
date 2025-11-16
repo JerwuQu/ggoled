@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ggoled_lib = { path = "../ggoled_lib" }
+
 anyhow = "1.0"
 image = { version = "0.25", features = ["gif"] }
 rusttype = "0.9"
 spin_sleep = "1.3"
-ggoled_lib = { path = "../ggoled_lib" }

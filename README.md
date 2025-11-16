@@ -4,7 +4,7 @@ Put custom graphics on your SteelSeries Arctis Nova Pro Base Station 128x64 OLED
 
 This utility implements the USB protocol, so you don't need SteelSeries GG/Engine Apps/GameSense, and it works on linux.
 
-For Windows there is also a [desktop application](#desktop-application) that shows the current time and currently playing media.
+There is also a [desktop application](#desktop-application) available for Windows and Linux that shows the current time and currently playing media, along with some other features.
 
 ## Animation showcase
 
@@ -30,7 +30,7 @@ PRs and issues for similar devices are welcome!
 
 For Windows you can download the latest builds either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions?query=branch%3Amaster) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
 
-Otherwise, install the Rust toolchain and run: `cargo install --git https://github.com/JerwuQu/ggoled.git ggoled`
+Otherwise, install the Rust toolchain and run: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled ggoled_app`
 
 To run `ggoled` without requiring root on linux you first need to copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/` and run `udevadm control --reload` and `udevadm trigger` as root.
 
@@ -54,11 +54,9 @@ ggoled anim -r 20 $(Get-ChildItem frames | % { $_.FullName })  # powershell
 
 ## Desktop application
 
-_Currently Windows only._
-
 The application puts itself as an icon in the system tray that you can right-click to configure.
 
-It gets media information from the Windows API which makes it work with almost all applications (with some limitations).
+For Windows, it gets media information from the Windows API which makes it work with almost all applications (with some limitations).
 
 There are also features to avoid OLED burn-in that is otherwise unavoidable when using the official software, such as the screensaver function which will turn off the OLED display when away from the computer, or the OLED shifter which will infrequently move things around slightly.
 To extend the lifespan of your display, both of these are strongly recommended to use, along with using a low screen brightness.

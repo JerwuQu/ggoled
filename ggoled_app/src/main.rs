@@ -1,21 +1,22 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[cfg(not(target_os = "windows"))]
-compile_error!("ggoled_app can currently only be built for Windows");
-
 mod os;
 
-use anyhow::Context;
 use chrono::{Local, TimeDelta, Timelike};
 use ggoled_draw::{bitmap_from_memory, DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer};
 use ggoled_lib::Device;
-use os::{dispatch_system_events, get_idle_seconds, Media, MediaControl};
+use os::{get_idle_seconds, Media, MediaControl};
 use rfd::{MessageDialog, MessageLevel};
+use sdl3_sys::everything as sdl;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, path::PathBuf, sync::Arc, thread::sleep, time::Duration};
-use tray_icon::{
-    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
-    Icon, TrayIconBuilder,
+use std::{
+    ffi::CStr,
+    fmt::Debug,
+    os::raw::c_void,
+    path::PathBuf,
+    sync::{mpsc, Arc},
+    thread::sleep,
+    time::Duration,
 };
 
 const IDLE_TIMEOUT_SECS: usize = 60;
@@ -103,17 +104,64 @@ pub fn dialog_unwrap<T, E: Debug>(res: Result<T, E>) -> T {
     }
 }
 
-fn load_icon(buf: &[u8]) -> Icon {
-    Icon::from_rgba(
-        image::load_from_memory(buf)
+struct Icon {
+    _pixels: Vec<u8>,
+    surf: *mut sdl::SDL_Surface,
+}
+impl Icon {
+    fn load(buf: &[u8]) -> Self {
+        let pixels = image::load_from_memory(buf)
             .unwrap()
             .resize(32, 32, image::imageops::FilterType::Lanczos3)
             .to_rgba8()
-            .to_vec(),
-        32,
-        32,
-    )
-    .unwrap()
+            .into_vec();
+        let surf = unsafe {
+            sdl::SDL_CreateSurfaceFrom(
+                32,
+                32,
+                sdl::SDL_PixelFormat::RGBA8888,
+                pixels.as_ptr() as *mut c_void,
+                32 * 4,
+            )
+        };
+        assert!(!surf.is_null());
+        Self { _pixels: pixels, surf }
+    }
+}
+impl Drop for Icon {
+    fn drop(&mut self) {
+        unsafe { sdl::SDL_DestroySurface(self.surf) };
+    }
+}
+
+fn menu_check(menu: *mut sdl::SDL_TrayMenu, title: &'static CStr, checked: bool) -> *mut sdl::SDL_TrayEntry {
+    let checked = if checked { sdl::SDL_TRAYENTRY_CHECKED } else { 0 };
+    unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, title.as_ptr(), sdl::SDL_TRAYENTRY_CHECKBOX | checked) }
+}
+
+extern "C" fn c_menu_callback(userdata: *mut c_void, _entry: *mut sdl::SDL_TrayEntry) {
+    let f: &Box<dyn Fn()> = unsafe { &*(userdata as *mut Box<dyn Fn()>) };
+    f();
+}
+
+fn menu_callback(entry: *mut sdl::SDL_TrayEntry, f: impl Fn()) {
+    let f: Box<Box<dyn Fn()>> = Box::new(Box::new(f));
+    let f = Box::leak(f) as *mut Box<dyn Fn()> as *mut c_void;
+    unsafe { sdl::SDL_SetTrayEntryCallback(entry, Some(c_menu_callback), f) };
+}
+
+#[derive(Clone, Copy)]
+enum MenuEvent {
+    ToggleCheck,
+    SetShiftMode(ConfigShiftMode),
+    Quit,
+}
+
+fn bind_menu_event(entry: *mut sdl::SDL_TrayEntry, tx: &mpsc::Sender<MenuEvent>, event: MenuEvent) {
+    let tx = tx.clone();
+    menu_callback(entry, move || {
+        let _ = tx.send(event);
+    });
 }
 
 fn main() {
@@ -125,48 +173,52 @@ fn main() {
     }
 
     // Create tray icon with menu
-    let tm_time_check = CheckMenuItem::new("Show time", true, config.show_time, None);
-    let tm_media_check = CheckMenuItem::new("Show playing media", true, config.show_media, None);
-    let tm_notif_check = CheckMenuItem::new("Show connection notifications", true, config.show_notifications, None);
-    let tm_idle_check = CheckMenuItem::new("Screensaver when idle", true, config.idle_timeout, None);
-    let tm_oledshift_off = CheckMenuItem::new("Off", true, false, None);
-    let tm_oledshift_simple = CheckMenuItem::new("Simple", true, false, None);
-    // TODO: remove all these closures and create a struct instead
-    let update_oledshift = |dev: &mut DrawDevice, mode: ConfigShiftMode| {
-        tm_oledshift_off.set_checked(matches!(mode, ConfigShiftMode::Off));
-        tm_oledshift_simple.set_checked(matches!(mode, ConfigShiftMode::Simple));
-        dev.set_shift_mode(mode.to_api());
-    };
-    let tm_quit = MenuItem::new("Quit", true, None);
-    let tray_menu = dialog_unwrap(Menu::with_items(&[
-        &MenuItem::new("ggoled", false, None),
-        &PredefinedMenuItem::separator(),
-        &tm_time_check,
-        &tm_media_check,
-        &tm_notif_check,
-        &tm_idle_check,
-        &Submenu::with_items("OLED screen shift", true, &[&tm_oledshift_off, &tm_oledshift_simple]).unwrap(),
-        &PredefinedMenuItem::separator(),
-        &tm_quit,
-    ]));
+    assert!(unsafe { sdl::SDL_Init(sdl::SDL_INIT_VIDEO) });
+    let icon = Icon::load(include_bytes!("../assets/ggoled.png"));
+    let icon_error = Icon::load(include_bytes!("../assets/ggoled_error.png"));
+    let tray = unsafe { sdl::SDL_CreateTray(icon.surf, c"ggoled".as_ptr()) };
+    assert!(!tray.is_null());
+    let menu = unsafe { sdl::SDL_CreateTrayMenu(tray) };
+    assert!(!menu.is_null());
+    let (menu_tx, menu_rx) = mpsc::channel::<MenuEvent>();
 
-    let ggoled_normal_icon = load_icon(include_bytes!("../assets/ggoled.png"));
-    let ggoled_error_icon = load_icon(include_bytes!("../assets/ggoled_error.png"));
-    let tray = TrayIconBuilder::new()
-        .with_menu(Box::new(tray_menu))
-        .with_tooltip("ggoled")
-        .build()
-        .context("Failed to create tray icon")
-        .unwrap();
+    let tm_time_check = menu_check(menu, c"Show time", config.show_time);
+    bind_menu_event(tm_time_check, &menu_tx, MenuEvent::ToggleCheck);
+    let tm_media_check = menu_check(menu, c"Show playing media", config.show_media);
+    bind_menu_event(tm_media_check, &menu_tx, MenuEvent::ToggleCheck);
+    let tm_notif_check = menu_check(menu, c"Show connection notifications", config.show_notifications);
+    bind_menu_event(tm_notif_check, &menu_tx, MenuEvent::ToggleCheck);
+    let tm_idle_check = menu_check(menu, c"Screensaver when idle", config.idle_timeout);
+    bind_menu_event(tm_idle_check, &menu_tx, MenuEvent::ToggleCheck);
+    // TODO: implement idle check on linux
+    #[cfg(target_os = "linux")]
+    unsafe {
+        config.idle_timeout = false;
+        sdl::SDL_SetTrayEntryChecked(tm_idle_check, false);
+        sdl::SDL_SetTrayEntryEnabled(tm_idle_check, false);
+    }
 
-    let update_connection = |con: bool| {
-        // NOTE: `tray.set_icon(...)` can fail due to timeout in some conditions: ignore error
-        _ = tray.set_icon(Some(
-            (if con { &ggoled_normal_icon } else { &ggoled_error_icon }).clone(),
-        ));
-    };
-    update_connection(true);
-    update_oledshift(&mut dev, config.oled_shift);
+    let tm_shift_submenu_entry =
+        unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, c"OLED screen shift".as_ptr(), sdl::SDL_TRAYENTRY_SUBMENU) };
+    let tm_shift_submenu = unsafe { sdl::SDL_CreateTraySubmenu(tm_shift_submenu_entry) };
+    let tm_shift_off = menu_check(
+        tm_shift_submenu,
+        c"Off",
+        matches!(config.oled_shift, ConfigShiftMode::Off),
+    );
+    bind_menu_event(tm_shift_off, &menu_tx, MenuEvent::SetShiftMode(ConfigShiftMode::Off));
+    let tm_shift_simple = menu_check(
+        tm_shift_submenu,
+        c"Simple",
+        matches!(config.oled_shift, ConfigShiftMode::Simple),
+    );
+    bind_menu_event(
+        tm_shift_simple,
+        &menu_tx,
+        MenuEvent::SetShiftMode(ConfigShiftMode::Simple),
+    );
+    let tm_quit = unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, c"Quit".as_ptr(), sdl::SDL_TRAYENTRY_BUTTON) };
+    bind_menu_event(tm_quit, &menu_tx, MenuEvent::Quit);
 
     // Load icons
     let icon_hs_connect =
@@ -176,7 +228,6 @@ fn main() {
 
     // State
     let mgr = MediaControl::new();
-    let menu_channel = MenuEvent::receiver();
     let mut last_time = Local::now() - TimeDelta::seconds(1);
     let mut last_media: Option<Media> = None;
     let mut time_layers: Vec<LayerId> = vec![];
@@ -186,36 +237,40 @@ fn main() {
     let mut is_connected = None; // TODO: probe on startup
 
     // Go!
+    dev.set_shift_mode(config.oled_shift.to_api());
     dev.play();
     'main: loop {
-        // Window event loop is required to get tray-icon working
+        // Window event loop
         // TODO: handle system going to sleep
-        // TDOO: context menu shouldn't freeze rendering
-        dispatch_system_events();
+        let mut event = sdl::SDL_Event::default();
+        while unsafe { sdl::SDL_PollEvent(&mut event) } {
+            let event_type = sdl::SDL_EventType(unsafe { event.r#type });
+            match event_type {
+                sdl::SDL_EVENT_QUIT => break 'main,
+                _ => {}
+            }
+        }
 
         // Handle tray menu events
         let mut config_updated = false;
-        while let Ok(event) = menu_channel.try_recv() {
-            if event.id == tm_time_check.id() {
-                config.show_time = tm_time_check.is_checked();
-            } else if event.id == tm_media_check.id() {
-                config.show_media = tm_media_check.is_checked();
-            } else if event.id == tm_notif_check.id() {
-                config.show_notifications = tm_notif_check.is_checked();
-            } else if event.id == tm_idle_check.id() {
-                config.idle_timeout = tm_idle_check.is_checked();
-            } else if event.id == tm_oledshift_off.id() {
-                config.oled_shift = ConfigShiftMode::Off;
-                update_oledshift(&mut dev, config.oled_shift);
-            } else if event.id == tm_oledshift_simple.id() {
-                config.oled_shift = ConfigShiftMode::Simple;
-                update_oledshift(&mut dev, config.oled_shift);
-            } else if event.id == tm_quit.id() {
-                break 'main; // break main loop
-            } else {
-                continue; // no match, don't mark config as updated
+        while let Ok(event) = menu_rx.try_recv() {
+            match event {
+                MenuEvent::ToggleCheck => {
+                    config_updated = true;
+                    config.show_time = unsafe { sdl::SDL_GetTrayEntryChecked(tm_time_check) };
+                    config.show_media = unsafe { sdl::SDL_GetTrayEntryChecked(tm_media_check) };
+                    config.show_notifications = unsafe { sdl::SDL_GetTrayEntryChecked(tm_notif_check) };
+                    config.idle_timeout = unsafe { sdl::SDL_GetTrayEntryChecked(tm_idle_check) };
+                }
+                MenuEvent::SetShiftMode(mode) => {
+                    config_updated = true;
+                    config.oled_shift = mode;
+                    unsafe { sdl::SDL_SetTrayEntryChecked(tm_shift_off, matches!(mode, ConfigShiftMode::Off)) };
+                    unsafe { sdl::SDL_SetTrayEntryChecked(tm_shift_simple, matches!(mode, ConfigShiftMode::Simple)) };
+                    dev.set_shift_mode(config.oled_shift.to_api());
+                }
+                MenuEvent::Quit => break 'main,
             }
-            config_updated = true;
         }
         if config_updated {
             dialog_unwrap(config.save());
@@ -227,8 +282,8 @@ fn main() {
         while let Some(event) = dev.try_event() {
             println!("event: {:?}", event);
             match event {
-                DrawEvent::DeviceDisconnected => update_connection(false),
-                DrawEvent::DeviceReconnected => update_connection(true),
+                DrawEvent::DeviceDisconnected => unsafe { sdl::SDL_SetTrayIcon(tray, icon_error.surf) },
+                DrawEvent::DeviceReconnected => unsafe { sdl::SDL_SetTrayIcon(tray, icon.surf) },
                 DrawEvent::DeviceEvent(event) => match event {
                     ggoled_lib::DeviceEvent::HeadsetConnection { wireless, .. } => {
                         if Some(wireless) != is_connected {
@@ -303,8 +358,6 @@ fn main() {
                     }
                     last_media = media;
                 }
-
-                // TODO: show icon if headset was recently connected/disconnected
 
                 dev.play();
             }

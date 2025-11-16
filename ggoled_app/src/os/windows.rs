@@ -1,14 +1,11 @@
 use super::Media;
-use std::{mem::size_of, ptr::null_mut};
+use std::mem::size_of;
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionManager, GlobalSystemMediaTransportControlsSessionPlaybackStatus,
 };
 use windows_sys::Win32::{
     System::SystemInformation::GetTickCount,
-    UI::{
-        Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
-        WindowsAndMessaging::{DispatchMessageW, PeekMessageW, TranslateMessage, MSG},
-    },
+    UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
 };
 
 pub struct MediaControl {
@@ -17,7 +14,7 @@ pub struct MediaControl {
 impl MediaControl {
     pub fn new() -> MediaControl {
         let request = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().unwrap();
-        let mgr = request.get().unwrap();
+        let mgr = request.join().unwrap();
         MediaControl { mgr }
     }
     pub fn get_media(&self) -> Option<Media> {
@@ -27,7 +24,7 @@ impl MediaControl {
                 == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
             if playing {
                 let request = session.TryGetMediaPropertiesAsync()?;
-                let media = request.get()?;
+                let media = request.join()?;
                 anyhow::Ok(Some(Media {
                     title: media.Title()?.to_string_lossy(),
                     artist: media.Artist()?.to_string_lossy(),
@@ -38,16 +35,6 @@ impl MediaControl {
         })()
         .ok()
         .flatten()
-    }
-}
-
-pub fn dispatch_system_events() {
-    unsafe {
-        let mut msg: MSG = std::mem::zeroed();
-        while PeekMessageW(&mut msg, null_mut(), 0, 0, 1) > 0 {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
     }
 }
 

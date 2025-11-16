@@ -1,11 +1,9 @@
-use {
-    std::{env, io},
-    winresource::WindowsResource,
-};
+use std::io;
 
 fn main() -> io::Result<()> {
-    if env::var_os("CARGO_CFG_WINDOWS").is_some() {
-        WindowsResource::new().set_icon("assets/ggoled.ico").compile()?;
-    }
+    #[cfg(target_os = "windows")]
+    winresource::WindowsResource::new()
+        .set_icon("assets/ggoled.ico")
+        .compile()?;
     Ok(())
 }
