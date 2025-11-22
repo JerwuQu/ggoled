@@ -61,6 +61,15 @@ For Windows, it gets media information from the Windows API which makes it work 
 There are also features to avoid OLED burn-in that is otherwise unavoidable when using the official software, such as the screensaver function which will turn off the OLED display when away from the computer, or the OLED shifter which will infrequently move things around slightly.
 To extend the lifespan of your display, both of these are strongly recommended to use, along with using a low screen brightness.
 
+### systemd service
+
+```sh
+mkdir -p ~/.config/systemd/user/
+cp ggoled_app.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now ggoled_app.service
+``` 
+
 ### Custom font
 
 It's recommended to use bitmap fonts to avoid weird artifacting, but any TTF or OTF font should work.

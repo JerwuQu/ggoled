@@ -1,0 +1,11 @@
+[Unit]
+Description=ggoled_app
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env ggoled_app
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
