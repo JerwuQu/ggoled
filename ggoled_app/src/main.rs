@@ -140,6 +140,7 @@ fn menu_check(menu: *mut sdl::SDL_TrayMenu, title: &'static CStr, checked: bool)
 }
 
 extern "C" fn c_menu_callback(userdata: *mut c_void, _entry: *mut sdl::SDL_TrayEntry) {
+    #[allow(clippy::borrowed_box)] // needs to be boxed
     let f: &Box<dyn Fn()> = unsafe { &*(userdata as *mut Box<dyn Fn()>) };
     f();
 }
@@ -245,9 +246,8 @@ fn main() {
         let mut event = sdl::SDL_Event::default();
         while unsafe { sdl::SDL_PollEvent(&mut event) } {
             let event_type = sdl::SDL_EventType(unsafe { event.r#type });
-            match event_type {
-                sdl::SDL_EVENT_QUIT => break 'main,
-                _ => {}
+            if event_type == sdl::SDL_EVENT_QUIT {
+                break 'main;
             }
         }
 
@@ -284,6 +284,7 @@ fn main() {
             match event {
                 DrawEvent::DeviceDisconnected => unsafe { sdl::SDL_SetTrayIcon(tray, icon_error.surf) },
                 DrawEvent::DeviceReconnected => unsafe { sdl::SDL_SetTrayIcon(tray, icon.surf) },
+                #[allow(clippy::single_match)]
                 DrawEvent::DeviceEvent(event) => match event {
                     ggoled_lib::DeviceEvent::HeadsetConnection { wireless, .. } => {
                         if Some(wireless) != is_connected {

@@ -249,7 +249,7 @@ impl Device {
     fn retry_report(&self, data: &[u8]) -> anyhow::Result<()> {
         let mut i: u64 = 0;
         loop {
-            match self.oled_dev.send_feature_report(&data) {
+            match self.oled_dev.send_feature_report(data) {
                 Ok(_) => return Ok(()),
                 Err(err) => {
                     if i == 10 {

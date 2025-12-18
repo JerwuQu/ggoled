@@ -1,4 +1,4 @@
-use clap::{command, Parser, ValueEnum};
+use clap::{Parser, ValueEnum};
 use core::str;
 use ggoled_draw::bitmap_from_memory;
 use ggoled_draw::decode_frames;
@@ -159,6 +159,7 @@ enum Args {
 
 fn main() {
     let args = Args::parse();
+    #[allow(clippy::single_match)]
     match args {
         Args::DumpDevices => {
             Device::dump_devices();
