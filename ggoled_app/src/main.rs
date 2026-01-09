@@ -119,7 +119,7 @@ impl Icon {
             sdl::SDL_CreateSurfaceFrom(
                 32,
                 32,
-                sdl::SDL_PixelFormat::RGBA8888,
+                sdl::SDL_PixelFormat::RGBA32,
                 pixels.as_ptr() as *mut c_void,
                 32 * 4,
             )
@@ -168,10 +168,6 @@ fn bind_menu_event(entry: *mut sdl::SDL_TrayEntry, tx: &mpsc::Sender<MenuEvent>,
 fn main() {
     // Initial loading
     let mut config = Config::load();
-    let mut dev = DrawDevice::new(dialog_unwrap(Device::connect()), 30);
-    if let Some(font) = &config.font {
-        dev.texter = dialog_unwrap(TextRenderer::load_from_file(&font.path, font.size));
-    }
 
     // Create tray icon with menu
     unsafe { sdl::SDL_SetHint(sdl::SDL_HINT_VIDEO_ALLOW_SCREENSAVER, c"1".as_ptr()) };
@@ -237,6 +233,12 @@ fn main() {
     let mut notif_layer: Option<LayerId> = None;
     let mut notif_expiry = Local::now();
     let mut is_connected = None; // TODO: probe on startup
+
+    // Connect
+    let mut dev = DrawDevice::new(dialog_unwrap(Device::connect()), 30);
+    if let Some(font) = &config.font {
+        dev.texter = dialog_unwrap(TextRenderer::load_from_file(&font.path, font.size));
+    }
 
     // Go!
     dev.set_shift_mode(config.oled_shift.to_api());
