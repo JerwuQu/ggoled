@@ -1,15 +1,15 @@
 use clap::{Parser, ValueEnum};
 use core::str;
+use ggoled_draw::DrawDevice;
 use ggoled_draw::bitmap_from_memory;
 use ggoled_draw::decode_frames;
-use ggoled_draw::DrawDevice;
 use ggoled_lib::Bitmap;
 use ggoled_lib::Device;
 use spin_sleep::sleep;
 use std::sync::Arc;
 use std::time::Instant;
 use std::{
-    io::{stdin, Read},
+    io::{Read, stdin},
     ops::Div,
     str::FromStr,
     time::Duration,

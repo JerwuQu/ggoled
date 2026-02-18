@@ -2,15 +2,15 @@
 // Heavily specialised for `ggoled_cli` and `ggoled_app`, and is therefore not recommended for general use.
 
 use anyhow::bail;
-use ggoled_lib::{bitmap::BitVec, Bitmap, Device, DeviceEvent};
-use image::{codecs::gif::GifDecoder, AnimationDecoder, ImageFormat, ImageReader};
-use rusttype::{point, Font, Scale};
+use ggoled_lib::{Bitmap, Device, DeviceEvent, bitmap::BitVec};
+use image::{AnimationDecoder, ImageFormat, ImageReader, codecs::gif::GifDecoder};
+use rusttype::{Font, Scale, point};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{
-        mpsc::{channel, Receiver, Sender},
         Arc, Mutex, MutexGuard,
+        mpsc::{Receiver, Sender, channel},
     },
     time::{Duration, Instant},
 };

@@ -3,9 +3,9 @@
 mod os;
 
 use chrono::{Local, TimeDelta, Timelike};
-use ggoled_draw::{bitmap_from_memory, DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer};
+use ggoled_draw::{DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer, bitmap_from_memory};
 use ggoled_lib::Device;
-use os::{get_idle_seconds, Media, MediaControl};
+use os::{Media, MediaControl, get_idle_seconds};
 use rfd::{MessageDialog, MessageLevel};
 use sdl3_sys::everything as sdl;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use std::{
     fmt::Debug,
     os::raw::c_void,
     path::PathBuf,
-    sync::{mpsc, Arc},
+    sync::{Arc, mpsc},
     thread::sleep,
     time::Duration,
 };
@@ -328,11 +328,11 @@ fn main() {
             last_time = time;
 
             // Remove expired notifications
-            if let Some(id) = notif_layer {
-                if time >= notif_expiry {
-                    dev.remove_layer(id);
-                    notif_layer = None;
-                }
+            if let Some(id) = notif_layer
+                && time >= notif_expiry
+            {
+                dev.remove_layer(id);
+                notif_layer = None;
             }
 
             // Check if idle

@@ -1,7 +1,7 @@
 [package]
 name = "ggoled_app"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [features]
 sdl3-static = ["sdl3-sys/build-from-source-static"]
