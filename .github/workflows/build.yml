@@ -28,7 +28,7 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.platform.target }}
+        run: cargo build --release --locked --features sdl3-static --target ${{ matrix.platform.target }}
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

@@ -3,6 +3,10 @@ name = "ggoled"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Dummy to simplify installs
+sdl3-static = []
+
 [dependencies]
 ggoled_lib = { path = "../ggoled_lib" }
 ggoled_draw = { path = "../ggoled_draw" }

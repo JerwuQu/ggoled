@@ -3,26 +3,28 @@ name = "ggoled_app"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+sdl3-static = ["sdl3-sys/build-from-source-static"]
+
 [dependencies]
 ggoled_lib = { path = "../ggoled_lib" }
 ggoled_draw = { path = "../ggoled_draw" }
 
-image = { version = "*" }
-chrono = "*"
 anyhow = "1"
+chrono = "*"
+directories = "*"
+image = { version = "*" }
+rfd = "*"
+sdl3-sys = { version = "0.6" }
 serde = { version = "1", features = ["derive"] }
 toml = "*"
-directories = "*"
-rfd = "*"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Media_Control"] }
 windows-sys = { version = "0.61.2", features = ["Win32_System_SystemInformation", "Win32_System_Console", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse"] }
-sdl3-sys = { version = "0.5", features = ["build-from-source-static"] }
 
 [target.'cfg(windows)'.build-dependencies]
-winresource = "0.1.27"
+winresource = "0.1.30"
 
 [target.'cfg(unix)'.dependencies]
 mpris = "2"
-sdl3-sys = { version = "0.5" }

@@ -31,9 +31,16 @@ PRs and issues for similar devices are welcome!
 
 For Windows you can download the latest builds either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions?query=branch%3Amaster) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
 
-Otherwise, install the Rust toolchain and run: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled ggoled_app`
+### From source
 
-To run `ggoled` without requiring root on linux you first need to copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/` and run `udevadm control --reload` and `udevadm trigger` as root.
+1. Install the Rust toolchain.
+2. Build directly from git, either:
+   - **A:** Using installed SDL3: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled ggoled_app`
+   - **B:** Building SDL3 from source: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git --features sdl3-static ggoled ggoled_app`
+   - **C:** CLI only: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled`
+3. (Linux only) To run ggoled without root on you need to:
+   1. Copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/`
+   2. Run `sudo udevadm control --reload && sudo udevadm trigger`.
 
 ## CLI usage examples
 
@@ -69,7 +76,7 @@ mkdir -p ~/.config/systemd/user/
 cp ggoled_app.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now ggoled_app.service
-``` 
+```
 
 ### Custom font
 

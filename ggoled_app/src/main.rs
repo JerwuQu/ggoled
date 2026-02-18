@@ -135,7 +135,11 @@ impl Drop for Icon {
 }
 
 fn menu_check(menu: *mut sdl::SDL_TrayMenu, title: &'static CStr, checked: bool) -> *mut sdl::SDL_TrayEntry {
-    let checked = if checked { sdl::SDL_TRAYENTRY_CHECKED } else { 0 };
+    let checked = if checked {
+        sdl::SDL_TRAYENTRY_CHECKED
+    } else {
+        sdl::SDL_TrayEntryFlags(0)
+    };
     unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, title.as_ptr(), sdl::SDL_TRAYENTRY_CHECKBOX | checked) }
 }
 
