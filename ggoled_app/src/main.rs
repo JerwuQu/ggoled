@@ -48,6 +48,7 @@ struct ConfigFont {
 struct Config {
     font: Option<ConfigFont>,
     show_time: bool,
+    twelve_hour_clock: bool,
     show_media: bool,
     idle_timeout: bool,
     oled_shift: ConfigShiftMode,
@@ -58,6 +59,7 @@ impl Default for Config {
         Self {
             font: None,
             show_time: true,
+            twelve_hour_clock: false,
             show_media: true,
             idle_timeout: true,
             oled_shift: ConfigShiftMode::default(),
@@ -186,6 +188,8 @@ fn main() {
 
     let tm_time_check = menu_check(menu, c"Show time", config.show_time);
     bind_menu_event(tm_time_check, &menu_tx, MenuEvent::ToggleCheck);
+    let tm_clock_type_check = menu_check(menu, c"Use 12 hour clock (AM/PM)", config.twelve_hour_clock);
+    bind_menu_event(tm_clock_type_check, &menu_tx, MenuEvent::ToggleCheck);
     let tm_media_check = menu_check(menu, c"Show playing media", config.show_media);
     bind_menu_event(tm_media_check, &menu_tx, MenuEvent::ToggleCheck);
     let tm_notif_check = menu_check(menu, c"Show connection notifications", config.show_notifications);
@@ -265,6 +269,7 @@ fn main() {
                 MenuEvent::ToggleCheck => {
                     config_updated = true;
                     config.show_time = unsafe { sdl::SDL_GetTrayEntryChecked(tm_time_check) };
+                    config.twelve_hour_clock = unsafe { sdl::SDL_GetTrayEntryChecked(tm_clock_type_check) };
                     config.show_media = unsafe { sdl::SDL_GetTrayEntryChecked(tm_media_check) };
                     config.show_notifications = unsafe { sdl::SDL_GetTrayEntryChecked(tm_notif_check) };
                     config.idle_timeout = unsafe { sdl::SDL_GetTrayEntryChecked(tm_idle_check) };
@@ -350,7 +355,11 @@ fn main() {
                 // Time
                 dev.remove_layers(&time_layers);
                 if config.show_time {
-                    let time_str = time.format("%H:%M:%S").to_string();
+                    let time_str = if config.twelve_hour_clock {
+                        time.format("%l:%M:%S %p").to_string()
+                    } else {
+                        time.format("%H:%M:%S").to_string()
+                    };
                     time_layers = dev.add_text(&time_str, None, if media.is_some() { Some(8) } else { None });
                 }
 
