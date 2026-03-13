@@ -2,7 +2,11 @@ pub mod bitmap;
 use anyhow::bail;
 pub use bitmap::Bitmap;
 use hidapi::{HidApi, HidDevice, MAX_REPORT_DESCRIPTOR_SIZE};
-use std::{cmp::min, time::Duration};
+use std::{
+    cmp::min,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 // NOTE: these work for Arctis Nova Pro but might not for different products!
 const SCREEN_REPORT_SPLIT_SZ: usize = 64;
@@ -37,8 +41,8 @@ pub enum DeviceEvent {
 }
 
 pub struct Device {
-    oled_dev: HidDevice,
-    info_dev: HidDevice,
+    oled_dev: Arc<Mutex<HidDevice>>,
+    info_dev: Arc<Mutex<HidDevice>>,
     pub width: usize,
     pub height: usize,
 }
@@ -73,14 +77,11 @@ impl Device {
 
         // On Linux, both devices can get put under the same hidraw interface, meaning we use the same device for both
         let (oled_dev, info_dev) = if device_infos[0].path() == device_infos[1].path() {
-            let Ok(oled_dev) = device_infos[0].open_device(&api) else {
-                bail!("Failed to connect to USB device");
+            let Ok(dev) = device_infos[0].open_device(&api) else {
+                bail!("Failed to connect to USB device (Linux 1)");
             };
-            let Ok(info_dev) = device_infos[0].open_device(&api) else {
-                bail!("Failed to connect to USB device");
-            };
-            (oled_dev, info_dev)
-
+            let dev = Arc::new(Mutex::new(dev));
+            (Arc::clone(&dev), dev)
         // On Windows (and maybe some Linux variants), they are separate interfaces and have to be opened separately
         } else {
             // Open both devices
@@ -89,7 +90,7 @@ impl Device {
                 .map(|info| anyhow::Ok(info.open_device(&api)?))
                 .collect::<anyhow::Result<Vec<_>>>()
             else {
-                bail!("Failed to connect to USB device");
+                bail!("Failed to connect to USB device (Windows)");
             };
 
             // Get descriptors
@@ -117,7 +118,7 @@ impl Device {
             _ = device_reports.swap_remove(info_dev_idx);
             let info_dev = devices.swap_remove(info_dev_idx);
 
-            (oled_dev, info_dev)
+            (Arc::new(Mutex::new(oled_dev)), Arc::new(Mutex::new(info_dev)))
         };
 
         Ok(Device {
@@ -249,7 +250,7 @@ impl Device {
     fn retry_report(&self, data: &[u8]) -> anyhow::Result<()> {
         let mut i: u64 = 0;
         loop {
-            match self.oled_dev.send_feature_report(data) {
+            match self.oled_dev.lock().unwrap().send_feature_report(data) {
                 Ok(_) => return Ok(()),
                 Err(err) => {
                     if i == 10 {
@@ -273,7 +274,7 @@ impl Device {
         report[0] = 0x06; // hid report id
         report[1] = 0x85; // command id
         report[2] = value;
-        self.oled_dev.write(&report)?;
+        self.oled_dev.lock().unwrap().write(&report)?;
         Ok(())
     }
 
@@ -282,7 +283,7 @@ impl Device {
         let mut report = [0; 64];
         report[0] = 0x06; // hid report id
         report[1] = 0x95; // command id
-        self.oled_dev.write(&report)?;
+        self.oled_dev.lock().unwrap().write(&report)?;
         Ok(())
     }
 
@@ -313,18 +314,18 @@ impl Device {
     /// Poll events from the device. This blocks until an event is returned.
     pub fn poll_event(&self) -> anyhow::Result<Option<DeviceEvent>> {
         let mut buf = [0u8; 64];
-        self.info_dev.set_blocking_mode(true)?;
-        _ = self.info_dev.read(&mut buf)?;
+        self.info_dev.lock().unwrap().set_blocking_mode(true)?;
+        _ = self.info_dev.lock().unwrap().read(&mut buf)?;
         Ok(Self::parse_event(&buf))
     }
 
     /// Return any pending events from the device. Non-blocking.
     pub fn get_events(&self) -> anyhow::Result<Vec<DeviceEvent>> {
-        self.info_dev.set_blocking_mode(false)?;
+        self.info_dev.lock().unwrap().set_blocking_mode(false)?;
         let mut events = vec![];
         loop {
             let mut buf = [0u8; 64];
-            let len = self.info_dev.read(&mut buf)?;
+            let len = self.info_dev.lock().unwrap().read(&mut buf)?;
             if len == 0 {
                 break;
             } else if let Some(event) = Self::parse_event(&buf) {
