@@ -104,7 +104,7 @@ impl Device {
                 .map(|info| anyhow::Ok(info.open_device(&api)?))
                 .collect::<anyhow::Result<Vec<_>>>()
             else {
-                bail!("Failed to connect to USB device");
+                bail!("Failed to connect to USB device (Windows)");
             };
 
             // Get descriptors
