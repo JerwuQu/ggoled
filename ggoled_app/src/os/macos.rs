@@ -12,10 +12,14 @@ impl MediaControl {
     pub fn get_media(&self) -> Option<Media> {
         let guard = self.npp.get_info();
         let info = guard.as_ref()?;
-        Some(Media {
-            title: info.title.clone()?,
-            artist: info.artist.clone()?,
-        })
+        if info.is_playing == Some(true) {
+            Some(Media {
+                title: info.title.clone()?,
+                artist: info.artist.clone()?,
+            })
+        } else {
+            None
+        }
     }
 }
 
