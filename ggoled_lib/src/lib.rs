@@ -78,7 +78,7 @@ impl Device {
         // On Linux, both devices can get put under the same hidraw interface, meaning we use the same device for both
         let (oled_dev, info_dev) = if device_infos[0].path() == device_infos[1].path() {
             let Ok(dev) = device_infos[0].open_device(&api) else {
-                bail!("Failed to connect to USB device (Linux 1)");
+                bail!("Failed to connect to USB device");
             };
             let dev = Arc::new(Mutex::new(dev));
             (Arc::clone(&dev), dev)
@@ -90,7 +90,7 @@ impl Device {
                 .map(|info| anyhow::Ok(info.open_device(&api)?))
                 .collect::<anyhow::Result<Vec<_>>>()
             else {
-                bail!("Failed to connect to USB device (Windows)");
+                bail!("Failed to connect to USB device");
             };
 
             // Get descriptors
