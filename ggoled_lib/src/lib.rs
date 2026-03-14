@@ -2,11 +2,8 @@ pub mod bitmap;
 use anyhow::bail;
 pub use bitmap::Bitmap;
 use hidapi::{HidApi, HidDevice, MAX_REPORT_DESCRIPTOR_SIZE};
-use std::{
-    cmp::min,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use parking_lot::Mutex;
+use std::{cmp::min, sync::Arc, time::Duration};
 
 // NOTE: these work for Arctis Nova Pro but might not for different products!
 const SCREEN_REPORT_SPLIT_SZ: usize = 64;
@@ -250,7 +247,7 @@ impl Device {
     fn retry_report(&self, data: &[u8]) -> anyhow::Result<()> {
         let mut i: u64 = 0;
         loop {
-            match self.oled_dev.lock().unwrap().send_feature_report(data) {
+            match self.oled_dev.lock().send_feature_report(data) {
                 Ok(_) => return Ok(()),
                 Err(err) => {
                     if i == 10 {
@@ -274,7 +271,7 @@ impl Device {
         report[0] = 0x06; // hid report id
         report[1] = 0x85; // command id
         report[2] = value;
-        self.oled_dev.lock().unwrap().write(&report)?;
+        self.oled_dev.lock().write(&report)?;
         Ok(())
     }
 
@@ -283,7 +280,7 @@ impl Device {
         let mut report = [0; 64];
         report[0] = 0x06; // hid report id
         report[1] = 0x95; // command id
-        self.oled_dev.lock().unwrap().write(&report)?;
+        self.oled_dev.lock().write(&report)?;
         Ok(())
     }
 
@@ -314,18 +311,20 @@ impl Device {
     /// Poll events from the device. This blocks until an event is returned.
     pub fn poll_event(&self) -> anyhow::Result<Option<DeviceEvent>> {
         let mut buf = [0u8; 64];
-        self.info_dev.lock().unwrap().set_blocking_mode(true)?;
-        _ = self.info_dev.lock().unwrap().read(&mut buf)?;
+        let dev = self.info_dev.lock();
+        dev.set_blocking_mode(true)?;
+        _ = dev.read(&mut buf)?;
         Ok(Self::parse_event(&buf))
     }
 
     /// Return any pending events from the device. Non-blocking.
     pub fn get_events(&self) -> anyhow::Result<Vec<DeviceEvent>> {
-        self.info_dev.lock().unwrap().set_blocking_mode(false)?;
+        let dev = self.info_dev.lock();
+        dev.set_blocking_mode(false)?;
         let mut events = vec![];
         loop {
             let mut buf = [0u8; 64];
-            let len = self.info_dev.lock().unwrap().read(&mut buf)?;
+            let len = dev.read(&mut buf)?;
             if len == 0 {
                 break;
             } else if let Some(event) = Self::parse_event(&buf) {
