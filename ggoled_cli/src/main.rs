@@ -89,6 +89,9 @@ struct ImageArgs {
         default_value = "100"
     )]
     threshold: u8,
+
+    #[arg(short = 'C', long, help = "Clear the screen before drawing")]
+    clear: bool,
 }
 
 #[derive(Parser)]
@@ -226,7 +229,13 @@ fn main() {
             let cy = (dev.height as isize - bitmap.h as isize) / 2;
             let x = image_args.draw_args.screen_x.to_option().unwrap_or(cx);
             let y = image_args.draw_args.screen_y.to_option().unwrap_or(cy);
-            dev.draw(&bitmap, x, y).unwrap();
+            if image_args.clear {
+                let mut screen = Bitmap::new(dev.width, dev.height, false);
+                screen.blit(&bitmap, x, y, true);
+                dev.draw(&screen, 0, 0).unwrap();
+            } else {
+                dev.draw(&bitmap, x, y).unwrap();
+            }
         }
         Args::Anim {
             framerate,
@@ -261,7 +270,13 @@ fn main() {
                     let cy = (dev.height as isize - bitmap.h as isize) / 2;
                     let x = image_args.draw_args.screen_x.to_option().unwrap_or(cx);
                     let y = image_args.draw_args.screen_y.to_option().unwrap_or(cy);
-                    dev.draw(bitmap, x, y).unwrap();
+                    if image_args.clear {
+                        let mut screen = Bitmap::new(dev.width, dev.height, false);
+                        screen.blit(bitmap, x, y, true);
+                        dev.draw(&screen, 0, 0).unwrap();
+                    } else {
+                        dev.draw(bitmap, x, y).unwrap();
+                    }
                     if now_time < next_frame {
                         sleep(next_frame.duration_since(Instant::now()));
                     } else {
