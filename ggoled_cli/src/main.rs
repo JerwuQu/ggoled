@@ -222,7 +222,11 @@ fn main() {
                 }
                 frames.swap_remove(0).bitmap
             };
-            dev.draw(&bitmap, 0, 0).unwrap();
+            let cx = (dev.width as isize - bitmap.w as isize) / 2;
+            let cy = (dev.height as isize - bitmap.h as isize) / 2;
+            let x = image_args.draw_args.screen_x.to_option().unwrap_or(cx);
+            let y = image_args.draw_args.screen_y.to_option().unwrap_or(cy);
+            dev.draw(&bitmap, x, y).unwrap();
         }
         Args::Anim {
             framerate,
