@@ -22,7 +22,15 @@ use std::{
 const IDLE_TIMEOUT_SECS: usize = 60;
 const NOTIF_DUR: Duration = Duration::from_secs(5);
 
-#[derive(Serialize, Deserialize, Default, Clone, Copy)]
+#[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq)]
+enum ConfigTimeMode {
+    Off,
+    #[default]
+    H24,
+    H12,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq)]
 enum ConfigShiftMode {
     Off,
     #[default]
@@ -47,8 +55,7 @@ struct ConfigFont {
 #[serde(default)]
 struct Config {
     font: Option<ConfigFont>,
-    show_time: bool,
-    twelve_hour_clock: bool,
+    time_mode: ConfigTimeMode,
     show_media: bool,
     idle_timeout: bool,
     oled_shift: ConfigShiftMode,
@@ -58,8 +65,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             font: None,
-            show_time: true,
-            twelve_hour_clock: false,
+            time_mode: ConfigTimeMode::default(),
             show_media: true,
             idle_timeout: true,
             oled_shift: ConfigShiftMode::default(),
@@ -160,6 +166,7 @@ fn menu_callback(entry: *mut sdl::SDL_TrayEntry, f: impl Fn()) {
 #[derive(Clone, Copy)]
 enum MenuEvent {
     ToggleCheck,
+    SetTimeMode(ConfigTimeMode),
     SetShiftMode(ConfigShiftMode),
     Quit,
 }
@@ -169,6 +176,37 @@ fn bind_menu_event(entry: *mut sdl::SDL_TrayEntry, tx: &mpsc::Sender<MenuEvent>,
     menu_callback(entry, move || {
         let _ = tx.send(event);
     });
+}
+
+struct RadioMenu<T> {
+    entries: Vec<(*mut sdl::SDL_TrayEntry, T)>,
+}
+impl<T: Copy + PartialEq> RadioMenu<T> {
+    fn new(
+        menu: *mut sdl::SDL_TrayMenu,
+        title: &'static CStr,
+        options: &[(&'static CStr, T)],
+        initial: T,
+        tx: &mpsc::Sender<MenuEvent>,
+        into_event: fn(T) -> MenuEvent,
+    ) -> Self {
+        let submenu_entry = unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, title.as_ptr(), sdl::SDL_TRAYENTRY_SUBMENU) };
+        let submenu = unsafe { sdl::SDL_CreateTraySubmenu(submenu_entry) };
+        let entries: Vec<_> = options
+            .iter()
+            .map(|(label, value)| {
+                let entry = menu_check(submenu, label, *value == initial);
+                bind_menu_event(entry, tx, into_event(*value));
+                (entry, *value)
+            })
+            .collect();
+        Self { entries }
+    }
+    fn update_checked(&self, value: T) {
+        for (entry, v) in &self.entries {
+            unsafe { sdl::SDL_SetTrayEntryChecked(*entry, *v == value) };
+        }
+    }
 }
 
 fn main() {
@@ -186,10 +224,18 @@ fn main() {
     assert!(!menu.is_null());
     let (menu_tx, menu_rx) = mpsc::channel::<MenuEvent>();
 
-    let tm_time_check = menu_check(menu, c"Show time", config.show_time);
-    bind_menu_event(tm_time_check, &menu_tx, MenuEvent::ToggleCheck);
-    let tm_clock_type_check = menu_check(menu, c"Use 12 hour clock (AM/PM)", config.twelve_hour_clock);
-    bind_menu_event(tm_clock_type_check, &menu_tx, MenuEvent::ToggleCheck);
+    let tm_time_radio = RadioMenu::new(
+        menu,
+        c"Time",
+        &[
+            (c"Off", ConfigTimeMode::Off),
+            (c"24-hour", ConfigTimeMode::H24),
+            (c"12-hour (AM/PM)", ConfigTimeMode::H12),
+        ],
+        config.time_mode,
+        &menu_tx,
+        MenuEvent::SetTimeMode,
+    );
     let tm_media_check = menu_check(menu, c"Show playing media", config.show_media);
     bind_menu_event(tm_media_check, &menu_tx, MenuEvent::ToggleCheck);
     let tm_notif_check = menu_check(menu, c"Show connection notifications", config.show_notifications);
@@ -203,25 +249,13 @@ fn main() {
         sdl::SDL_SetTrayEntryChecked(tm_idle_check, false);
         sdl::SDL_SetTrayEntryEnabled(tm_idle_check, false);
     }
-
-    let tm_shift_submenu_entry =
-        unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, c"OLED screen shift".as_ptr(), sdl::SDL_TRAYENTRY_SUBMENU) };
-    let tm_shift_submenu = unsafe { sdl::SDL_CreateTraySubmenu(tm_shift_submenu_entry) };
-    let tm_shift_off = menu_check(
-        tm_shift_submenu,
-        c"Off",
-        matches!(config.oled_shift, ConfigShiftMode::Off),
-    );
-    bind_menu_event(tm_shift_off, &menu_tx, MenuEvent::SetShiftMode(ConfigShiftMode::Off));
-    let tm_shift_simple = menu_check(
-        tm_shift_submenu,
-        c"Simple",
-        matches!(config.oled_shift, ConfigShiftMode::Simple),
-    );
-    bind_menu_event(
-        tm_shift_simple,
+    let tm_shift_radio = RadioMenu::new(
+        menu,
+        c"OLED screen shift",
+        &[(c"Off", ConfigShiftMode::Off), (c"Simple", ConfigShiftMode::Simple)],
+        config.oled_shift,
         &menu_tx,
-        MenuEvent::SetShiftMode(ConfigShiftMode::Simple),
+        MenuEvent::SetShiftMode,
     );
     let tm_quit = unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, c"Quit".as_ptr(), sdl::SDL_TRAYENTRY_BUTTON) };
     bind_menu_event(tm_quit, &menu_tx, MenuEvent::Quit);
@@ -268,17 +302,19 @@ fn main() {
             match event {
                 MenuEvent::ToggleCheck => {
                     config_updated = true;
-                    config.show_time = unsafe { sdl::SDL_GetTrayEntryChecked(tm_time_check) };
-                    config.twelve_hour_clock = unsafe { sdl::SDL_GetTrayEntryChecked(tm_clock_type_check) };
                     config.show_media = unsafe { sdl::SDL_GetTrayEntryChecked(tm_media_check) };
                     config.show_notifications = unsafe { sdl::SDL_GetTrayEntryChecked(tm_notif_check) };
                     config.idle_timeout = unsafe { sdl::SDL_GetTrayEntryChecked(tm_idle_check) };
                 }
+                MenuEvent::SetTimeMode(mode) => {
+                    config_updated = true;
+                    config.time_mode = mode;
+                    tm_time_radio.update_checked(mode);
+                }
                 MenuEvent::SetShiftMode(mode) => {
                     config_updated = true;
                     config.oled_shift = mode;
-                    unsafe { sdl::SDL_SetTrayEntryChecked(tm_shift_off, matches!(mode, ConfigShiftMode::Off)) };
-                    unsafe { sdl::SDL_SetTrayEntryChecked(tm_shift_simple, matches!(mode, ConfigShiftMode::Simple)) };
+                    tm_shift_radio.update_checked(mode);
                     dev.set_shift_mode(config.oled_shift.to_api());
                 }
                 MenuEvent::Quit => break 'main,
@@ -355,11 +391,11 @@ fn main() {
 
                 // Time
                 dev.remove_layers(&time_layers);
-                if config.show_time {
-                    let time_str = if config.twelve_hour_clock {
-                        time.format("%l:%M:%S %p").to_string()
-                    } else {
-                        time.format("%H:%M:%S").to_string()
+                if config.time_mode != ConfigTimeMode::Off {
+                    let time_str = match config.time_mode {
+                        ConfigTimeMode::Off => unreachable!(),
+                        ConfigTimeMode::H24 => time.format("%H:%M:%S").to_string(),
+                        ConfigTimeMode::H12 => time.format("%l:%M:%S %p").to_string(),
                     };
                     time_layers = dev.add_text(&time_str, None, if media.is_some() { Some(8) } else { None });
                 }
