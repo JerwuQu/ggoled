@@ -2,8 +2,7 @@ pub mod bitmap;
 use anyhow::bail;
 pub use bitmap::Bitmap;
 use hidapi::{HidApi, HidDevice, MAX_REPORT_DESCRIPTOR_SIZE};
-use parking_lot::Mutex;
-use std::{cmp::min, sync::Arc, time::Duration};
+use std::{cmp::min, time::Duration};
 
 // NOTE: these work for Arctis Nova Pro but might not for different products!
 const SCREEN_REPORT_SPLIT_SZ: usize = 64;

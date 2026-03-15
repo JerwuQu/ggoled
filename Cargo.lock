@@ -766,7 +766,6 @@ dependencies = [
  "anyhow",
  "bit-vec",
  "hidapi",
- "parking_lot",
  "spin_sleep",
 ]
 
