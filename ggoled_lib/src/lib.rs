@@ -36,9 +36,27 @@ pub enum DeviceEvent {
     },
 }
 
+enum DeviceMerge {
+    Merged(HidDevice),
+    Separate { oled: HidDevice, info: HidDevice },
+}
+impl DeviceMerge {
+    fn oled(&self) -> &HidDevice {
+        match self {
+            DeviceMerge::Merged(dev) => dev,
+            DeviceMerge::Separate { oled, .. } => oled,
+        }
+    }
+    fn info(&self) -> &HidDevice {
+        match self {
+            DeviceMerge::Merged(dev) => dev,
+            DeviceMerge::Separate { info, .. } => info,
+        }
+    }
+}
+
 pub struct Device {
-    oled_dev: HidDevice,
-    info_dev: HidDevice,
+    dev: DeviceMerge,
     pub width: usize,
     pub height: usize,
 }
@@ -72,15 +90,11 @@ impl Device {
         }
 
         // On Linux, both devices can get put under the same hidraw interface, meaning we use the same device for both
-        let (oled_dev, info_dev) = if device_infos[0].path() == device_infos[1].path() {
-            let Ok(oled_dev) = device_infos[0].open_device(&api) else {
+        let dev = if device_infos[0].path() == device_infos[1].path() {
+            let Ok(dev) = device_infos[0].open_device(&api) else {
                 bail!("Failed to connect to USB device");
             };
-            let Ok(info_dev) = device_infos[0].open_device(&api) else {
-                bail!("Failed to connect to USB device");
-            };
-            (oled_dev, info_dev)
-
+            DeviceMerge::Merged(dev)
         // On Windows (and maybe some Linux variants), they are separate interfaces and have to be opened separately
         } else {
             // Open both devices
@@ -117,12 +131,14 @@ impl Device {
             _ = device_reports.swap_remove(info_dev_idx);
             let info_dev = devices.swap_remove(info_dev_idx);
 
-            (oled_dev, info_dev)
+            DeviceMerge::Separate {
+                oled: oled_dev,
+                info: info_dev,
+            }
         };
 
         Ok(Device {
-            oled_dev,
-            info_dev,
+            dev,
             width: 128,
             height: 64,
         })
@@ -249,7 +265,7 @@ impl Device {
     fn retry_report(&self, data: &[u8]) -> anyhow::Result<()> {
         let mut i: u64 = 0;
         loop {
-            match self.oled_dev.send_feature_report(data) {
+            match self.dev.oled().send_feature_report(data) {
                 Ok(_) => return Ok(()),
                 Err(err) => {
                     if i == 10 {
@@ -273,7 +289,7 @@ impl Device {
         report[0] = 0x06; // hid report id
         report[1] = 0x85; // command id
         report[2] = value;
-        self.oled_dev.write(&report)?;
+        self.dev.oled().write(&report)?;
         Ok(())
     }
 
@@ -282,7 +298,7 @@ impl Device {
         let mut report = [0; 64];
         report[0] = 0x06; // hid report id
         report[1] = 0x95; // command id
-        self.oled_dev.write(&report)?;
+        self.dev.oled().write(&report)?;
         Ok(())
     }
 
@@ -313,18 +329,18 @@ impl Device {
     /// Poll events from the device. This blocks until an event is returned.
     pub fn poll_event(&self) -> anyhow::Result<Option<DeviceEvent>> {
         let mut buf = [0u8; 64];
-        self.info_dev.set_blocking_mode(true)?;
-        _ = self.info_dev.read(&mut buf)?;
+        self.dev.info().set_blocking_mode(true)?;
+        _ = self.dev.info().read(&mut buf)?;
         Ok(Self::parse_event(&buf))
     }
 
     /// Return any pending events from the device. Non-blocking.
     pub fn get_events(&self) -> anyhow::Result<Vec<DeviceEvent>> {
-        self.info_dev.set_blocking_mode(false)?;
+        self.dev.info().set_blocking_mode(false)?;
         let mut events = vec![];
         loop {
             let mut buf = [0u8; 64];
-            let len = self.info_dev.read(&mut buf)?;
+            let len = self.dev.info().read(&mut buf)?;
             if len == 0 {
                 break;
             } else if let Some(event) = Self::parse_event(&buf) {
