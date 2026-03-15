@@ -5,6 +5,6 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
-bit-vec = "0.8"
+bit-vec = "0.9"
 hidapi = "2.6"
 spin_sleep = "1.3"
