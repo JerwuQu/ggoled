@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 pub use bit_vec::BitVec;
 
 #[derive(PartialEq)]
@@ -19,9 +17,9 @@ impl Bitmap {
         assert!(x <= self.w && y <= self.h);
         assert!(w <= self.w - x && h <= self.h - y);
         let mut data = BitVec::with_capacity(w * h);
-        for y in 0..h {
-            for x in 0..w {
-                data.push(self.data[x + y * self.w]);
+        for dy in 0..h {
+            for dx in 0..w {
+                data.push(self.data[(x + dx) + (y + dy) * self.w]);
             }
         }
         Self { w, h, data }

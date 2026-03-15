@@ -216,13 +216,13 @@ impl Device {
 
         // Handle negative x/y by moving src_x/src_y
         let (x, src_x) = if x < 0 {
-            w -= (-x) as usize;
+            w = w.saturating_sub((-x) as usize);
             (0, (-x) as usize)
         } else {
             (x as usize, 0)
         };
         let (y, src_y) = if y < 0 {
-            h -= (-y) as usize;
+            h = h.saturating_sub((-y) as usize);
             (0, (-y) as usize)
         } else {
             (y as usize, 0)
@@ -283,7 +283,7 @@ impl Device {
 
     /// Set screen brightness.
     pub fn set_brightness(&self, value: u8) -> anyhow::Result<()> {
-        if value < 0x01 {
+        if value < 1 {
             bail!("brightness too low");
         } else if value > 0x0a {
             bail!("brightness too high");

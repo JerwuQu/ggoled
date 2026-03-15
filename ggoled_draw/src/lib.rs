@@ -4,12 +4,13 @@
 use anyhow::bail;
 use ggoled_lib::{Bitmap, Device, DeviceEvent, bitmap::BitVec};
 use image::{AnimationDecoder, ImageFormat, ImageReader, codecs::gif::GifDecoder};
+use parking_lot::{Mutex, MutexGuard};
 use rusttype::{Font, Scale, point};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc,
         mpsc::{Receiver, Sender, channel},
     },
     time::{Duration, Instant},
@@ -258,7 +259,7 @@ fn run_draw_device_thread(
 
             // Update and blit each layer to the screen
             let mut screen = Bitmap::new(dev.width, dev.height, false);
-            let mut layers = layers.lock().unwrap();
+            let mut layers = layers.lock();
             for (_, state) in layers.iter_mut() {
                 match &state.layer {
                     DrawLayer::Image { bitmap, x, y } => screen.blit(bitmap, x + shift_x, y + shift_y, false),
@@ -418,26 +419,26 @@ impl DrawDevice {
         id
     }
     pub fn add_layer(&mut self, layer: DrawLayer) -> LayerId {
-        self.add_layer_locked(&mut self.layers.clone().lock().unwrap(), layer)
+        self.add_layer_locked(&mut self.layers.clone().lock(), layer)
     }
     pub fn remove_layer(&mut self, id: LayerId) {
-        self.layers.lock().unwrap().remove(&id);
+        self.layers.lock().remove(&id);
     }
     pub fn remove_layers(&mut self, ids: &[LayerId]) {
-        let mut layers = self.layers.lock().unwrap();
+        let mut layers = self.layers.lock();
         for id in ids {
             layers.remove(id);
         }
     }
     pub fn clear_layers(&mut self) {
-        self.layers.lock().unwrap().clear();
+        self.layers.lock().clear();
     }
     pub fn font_line_height(&self) -> usize {
         self.texter.line_height()
     }
     pub fn add_text(&mut self, text: &str, x: Option<isize>, y: Option<isize>) -> Vec<LayerId> {
         let layers = self.layers.clone();
-        let mut layers = layers.lock().unwrap();
+        let mut layers = layers.lock();
         let bitmaps: Vec<_> = self.texter.render_lines(text).into_iter().map(Arc::new).collect();
         let line_height = self.texter.line_height();
         let center_y: isize = (self.height as isize - (line_height * bitmaps.len()) as isize) / 2;
