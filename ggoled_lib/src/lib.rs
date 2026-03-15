@@ -64,7 +64,7 @@ pub struct Device {
 impl Device {
     /// Connect to a SteelSeries GG device.
     pub fn connect() -> anyhow::Result<Device> {
-        let api = HidApi::new().unwrap();
+        let api = HidApi::new()?;
 
         // Find all connected devices matching given Vendor/Product IDs and interface
         let device_infos: Vec<_> = api
@@ -147,7 +147,10 @@ impl Device {
 
     /// Dump the full device tree info for all SteelSeries devices to stdout for debug purposes
     pub fn dump_devices() {
-        let api = HidApi::new().unwrap();
+        let Ok(api) = HidApi::new() else {
+            eprintln!("Failed to initialize HID API.");
+            return;
+        };
 
         let device_infos: Vec<_> = api
             .device_list()

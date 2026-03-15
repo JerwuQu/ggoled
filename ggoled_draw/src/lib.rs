@@ -77,12 +77,18 @@ impl TextRenderer {
 }
 
 fn bitmap_from_image(img: &image::RgbaImage, threshold: u8) -> Bitmap {
+    let t3 = (threshold as usize) * 3 * 255;
     Bitmap {
         w: img.width() as usize,
         h: img.height() as usize,
         data: img
             .pixels()
-            .map(|p| (((p.0[0] as usize) + (p.0[1] as usize) + (p.0[2] as usize)) / 3) >= threshold as usize)
+            .map(|p| {
+                let r = p.0[0] as usize * p.0[3] as usize;
+                let g = p.0[1] as usize * p.0[3] as usize;
+                let b = p.0[2] as usize * p.0[3] as usize;
+                (r + g + b) >= t3
+            })
             .collect::<BitVec>(),
     }
 }
@@ -111,7 +117,10 @@ pub fn decode_frames(path: &str, threshold: u8) -> Vec<Frame> {
                 let bitmap = Arc::new(bitmap_from_image(frame.buffer(), threshold));
                 Frame {
                     bitmap,
-                    delay: Some(Duration::from_millis(frame.delay().numer_denom_ms().0 as u64)),
+                    delay: Some({
+                        let (numer, denom) = frame.delay().numer_denom_ms();
+                        Duration::from_millis(numer as u64 / denom.max(1) as u64)
+                    }),
                 }
             })
             .collect()
@@ -294,6 +303,8 @@ fn run_draw_device_thread(
                 }
             }
 
+            drop(layers);
+
             // Draw update
             let frame_time = Instant::now();
             let force_redraw = frame_time.duration_since(last_frame_time) >= Duration::from_secs(1);
@@ -308,7 +319,6 @@ fn run_draw_device_thread(
                     prev_screen = screen;
                 }
             }
-            drop(layers);
         }
 
         // Get device events and pass back to DrawDevice
@@ -370,20 +380,20 @@ impl DrawDevice {
     }
     fn destroy(&mut self) -> Option<Device> {
         if let Some(thread) = self.thread.take() {
-            self.cmd_sender.send(DrawCommand::Stop).unwrap();
-            Some(thread.join().unwrap())
+            let _ = self.cmd_sender.send(DrawCommand::Stop);
+            thread.join().ok()
         } else {
             None
         }
     }
     pub fn stop(mut self) -> Device {
-        self.destroy().unwrap()
+        self.destroy().expect("render thread panicked")
     }
     pub fn try_event(&mut self) -> Option<DrawEvent> {
         self.event_receiver.try_recv().ok()
     }
-    pub fn poll_event(&mut self) -> DrawEvent {
-        self.event_receiver.recv().unwrap()
+    pub fn poll_event(&mut self) -> anyhow::Result<DrawEvent> {
+        Ok(self.event_receiver.recv()?)
     }
     pub fn center_bitmap(&self, bitmap: &Bitmap) -> (isize, isize) {
         (

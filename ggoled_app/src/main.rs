@@ -292,6 +292,7 @@ fn main() {
 
         // Handle events
         while let Some(event) = dev.try_event() {
+            #[cfg(debug_assertions)]
             println!("event: {:?}", event);
             match event {
                 DrawEvent::DeviceDisconnected => unsafe { sdl::SDL_SetTrayIcon(tray, icon_error.surf) },
