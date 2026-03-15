@@ -276,10 +276,9 @@ fn run_draw_device_thread(
                                 state.anim.ticks += 1;
                             } else if time >= state.anim.next_update {
                                 state.anim.ticks += 1;
-                                // TODO: handle 0 delay frames properly
                                 // TODO: handle falling behind
                                 if let Some(delay) = frame.delay {
-                                    state.anim.next_update += delay;
+                                    state.anim.next_update += delay.max(Duration::from_millis(10));
                                 }
                             }
                         }
