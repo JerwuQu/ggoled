@@ -196,13 +196,14 @@ impl Device {
         report[1] = 0x93; // command id
         report[2] = d.dst_x as u8;
         report[3] = d.dst_y as u8;
+        // Pad height to multiple of 8 to align with device blocks.
+        let padded_h = d.h.div_ceil(8) * 8;
         report[4] = d.w as u8;
-        report[5] = d.h as u8;
-        let stride_h = (d.dst_y.wrapping_rem(8) + d.h).div_ceil(8) * 8; // TODO: fuzz this with all x/y/w/h combinations
+        report[5] = padded_h as u8;
         for y in 0..d.h {
             for x in 0..d.w {
                 // NOTE: report has columns rather than rows
-                let ri = x * stride_h + y;
+                let ri = x * padded_h + y;
                 let pi = (d.src_y + y) * d.bitmap.w + (d.src_x + x);
                 report[(ri / 8) + 6] |= (d.bitmap.data[pi] as u8) << (ri % 8);
             }
