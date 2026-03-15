@@ -11,13 +11,13 @@ ggoled_lib = { path = "../ggoled_lib" }
 ggoled_draw = { path = "../ggoled_draw" }
 
 anyhow = "1"
-chrono = "*"
-directories = "*"
-image = { version = "*" }
-rfd = "*"
+chrono = "0.4"
+directories = "6"
+image = "0.25"
+rfd = "0.17"
 sdl3-sys = { version = "0.6" }
 serde = { version = "1", features = ["derive"] }
-toml = "*"
+toml = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Media_Control"] }
