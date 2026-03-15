@@ -4,7 +4,7 @@ Put custom graphics on your SteelSeries Arctis Nova Pro Base Station 128x64 OLED
 
 This utility implements the USB protocol, so you don't need SteelSeries GG/Engine Apps/GameSense, and it works on linux.
 
-There is also a [desktop application](#desktop-application) available for Windows and Linux that shows the current time and currently playing media, along with some other features.
+There is also a [desktop application](#desktop-application) available for Windows, Linux, and MacOS that shows the current time and currently playing media, along with some other features.
 
 ## Animation showcase
 
@@ -82,7 +82,7 @@ systemctl --user enable --now ggoled_app.service
 
 It's recommended to use bitmap fonts to avoid weird artifacting, but any TTF or OTF font should work.
 
-Modify the `%appdata%\ggoled_app.toml` file and add:
+Modify the config file (`%appdata%\ggoled_app.toml` on Windows, `~/.config/ggoled_app.toml` on Linux) and add:
 
 ```toml
 [font]

@@ -1,6 +1,6 @@
 pub use bit_vec::BitVec;
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Bitmap {
     pub w: usize,
     pub h: usize,
