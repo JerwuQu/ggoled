@@ -23,7 +23,7 @@ enum DrawPos {
 impl FromStr for DrawPos {
     type Err = &'static str;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<isize>().map(|n| Ok(DrawPos::Coord(n))).unwrap_or_else(|_| {
+        s.parse::<isize>().map(DrawPos::Coord).or_else(|_| {
             if ["center", "c"].contains(&s.to_lowercase().as_str()) {
                 Ok(DrawPos::Center)
             } else {
@@ -149,7 +149,7 @@ enum Args {
 
     #[command(about = "Set display brightness")]
     Brightness {
-        #[arg(help = "Brighness, 1-10", index = 1)]
+        #[arg(help = "Brightness, 1-10", index = 1)]
         value: u8,
     },
 
@@ -159,13 +159,9 @@ enum Args {
 
 fn main() {
     let args = Args::parse();
-    #[allow(clippy::single_match)]
-    match args {
-        Args::DumpDevices => {
-            Device::dump_devices();
-            return;
-        }
-        _ => {} // Handled later after device connection
+    if let Args::DumpDevices = args {
+        Device::dump_devices();
+        return;
     }
 
     let dev = Device::connect().unwrap();
@@ -218,7 +214,10 @@ fn main() {
                 Arc::new(bitmap_from_memory(&buf, image_args.threshold).expect("Failed to read image from stdin"))
             } else {
                 let mut frames = decode_frames(&path, image_args.threshold);
-                if frames.len() != 1 {
+                if frames.is_empty() {
+                    eprintln!("No frames in image");
+                    std::process::exit(1);
+                } else if frames.len() != 1 {
                     eprintln!("img only supports images with single frame");
                 }
                 frames.swap_remove(0).bitmap
@@ -232,9 +231,11 @@ fn main() {
             image_args,
         } => {
             if framerate == Some(0) {
-                panic!("Framerate must be non-zero");
+                eprintln!("Framerate must be non-zero");
+                std::process::exit(1);
             } else if paths.is_empty() {
-                panic!("No image paths");
+                eprintln!("No image paths");
+                std::process::exit(1);
             }
             let period = framerate.map(|f| Duration::from_secs(1).div(f));
             let bitmaps: Vec<(Arc<Bitmap>, Duration)> = paths
@@ -248,8 +249,7 @@ fn main() {
                     })
                 })
                 .collect();
-            let mut frame_idx = 0;
-            let mut draw_animation = || {
+            let draw_animation = || {
                 for (bitmap, delay) in &bitmaps {
                     let now_time = Instant::now();
                     let next_frame = now_time + *delay;
@@ -258,7 +258,6 @@ fn main() {
                     let x = image_args.draw_args.screen_x.to_option().unwrap_or(cx);
                     let y = image_args.draw_args.screen_y.to_option().unwrap_or(cy);
                     dev.draw(bitmap, x, y).unwrap();
-                    frame_idx += 1;
                     if now_time < next_frame {
                         sleep(next_frame.duration_since(Instant::now()));
                     } else {
