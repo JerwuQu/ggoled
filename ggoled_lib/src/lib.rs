@@ -297,6 +297,18 @@ impl Device {
         Ok(())
     }
 
+    /// Probe to fetch initial data.
+    /// Data is received via events.
+    pub fn probe(&self) -> anyhow::Result<()> {
+        let mut report = [0; 64];
+        report[0] = 0x06; // hid report id
+        report[1] = 0xb0; // command id, get various data
+        self.dev.info().write(&report)?;
+        report[1] = 0x20; // command id, get volume info
+        self.dev.info().write(&report)?;
+        Ok(())
+    }
+
     /// Return to SteelSeries UI.
     pub fn return_to_ui(&self) -> anyhow::Result<()> {
         let mut report = [0; 64];
@@ -306,32 +318,72 @@ impl Device {
         Ok(())
     }
 
-    fn parse_event(buf: &[u8; 64]) -> Option<DeviceEvent> {
+    fn parse_event(buf: &[u8; 64]) -> Vec<DeviceEvent> {
         #[cfg(debug_assertions)]
         println!("parse_event: {:x?}", buf);
-        if buf[0] != 7 {
-            return None;
-        }
-        Some(match buf[1] {
-            0x25 => DeviceEvent::Volume {
+        match (buf[0], buf[1]) {
+            // --- events ---
+
+            // only contains new volume
+            (0x07, 0x25) => vec![DeviceEvent::Volume {
                 volume: 0x38u8.saturating_sub(buf[2]),
-            },
-            0xb5 => DeviceEvent::HeadsetConnection {
+            }],
+
+            // weird bytes values, but seem consistent
+            (0x07, 0xb5) => vec![DeviceEvent::HeadsetConnection {
                 wireless: buf[4] == 8,
                 bluetooth: buf[3] == 1,
                 bluetooth_on: buf[2] == 4,
-            },
-            0xb7 => DeviceEvent::Battery {
+            }],
+
+            // 0-8 values for battery levels
+            // we handle both event and command reply the same (because they look the same)
+            // can fetch this info with a [0x06, 0xb7] command, but [0x06, 0xb0] seems superior (?)
+            (0x07, 0xb7) | (0x06, 0xb7) => vec![DeviceEvent::Battery {
                 headset: buf[2],
                 charging: buf[3],
-                // NOTE: there's a chance `buf[4]` represents either the max value or simply just `8` for connected
-            },
-            _ => return None,
-        })
+                // NOTE: there's a possibility `buf[4]` represents either the max value or simply just `8` for connected
+            }],
+
+            // --- command responses ---
+
+            // version info, fetch with [0x06, 0x10]
+            // basically useless for us so not implemented
+            (0x06, 0x10) => vec![],
+
+            // [0x06, 0x20] returns a bunch of info
+            // same regardless of connected state
+            // i think some of it is equalizer levels, but i've got no idea what the rest is
+            (0x06, 0x20) => vec![DeviceEvent::Volume {
+                volume: 0x38u8.saturating_sub(buf[3]), // NOTE: different byte from Volume event
+            }],
+
+            // unknown data, fetch with [0x06, 0x80]
+            // same regardless of connected state
+            // not implemented
+            (0x06, 0x80) => vec![],
+
+            // various data
+            // there's a couple of bytes i've got no idea what they're supposed to represent
+            (0x06, 0xb0) => vec![
+                DeviceEvent::HeadsetConnection {
+                    wireless: buf[15] == 8,
+                    bluetooth: buf[5] == 1,
+                    bluetooth_on: buf[4] == 4,
+                },
+                DeviceEvent::Battery {
+                    headset: buf[6],
+                    charging: buf[7],
+                    // NOTE: `buf[15]` seems to behave the same as `buf[4]` in the event
+                },
+            ],
+
+            _ => vec![],
+        }
     }
 
     /// Poll events from the device. This blocks until an event is returned.
-    pub fn poll_event(&self) -> anyhow::Result<Option<DeviceEvent>> {
+    pub fn poll_event(&self) -> anyhow::Result<Vec<DeviceEvent>> {
         let mut buf = [0u8; 64];
         self.dev.info().set_blocking_mode(true)?;
         _ = self.dev.info().read(&mut buf)?;
@@ -347,8 +399,8 @@ impl Device {
             let len = self.dev.info().read(&mut buf)?;
             if len == 0 {
                 break;
-            } else if let Some(event) = Self::parse_event(&buf) {
-                events.push(event);
+            } else {
+                events.append(&mut Self::parse_event(&buf));
             }
         }
         Ok(events)

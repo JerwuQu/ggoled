@@ -281,6 +281,7 @@ fn main() {
     if let Some(font) = &config.font {
         dev.texter = dialog_unwrap(TextRenderer::load_from_file(&font.path, font.size));
     }
+    dev.probe();
 
     // Go!
     dev.set_shift_mode(config.oled_shift.to_api());

@@ -158,6 +158,9 @@ enum Args {
 
     #[command(about = "Dump devices list to stdout", hide = true)]
     DumpDevices,
+
+    #[command(about = "Probe device for info", hide = true)]
+    Probe,
 }
 
 fn main() {
@@ -297,6 +300,14 @@ fn main() {
         Args::Brightness { value } => {
             dev.set_brightness(value).unwrap();
         }
-        Args::DumpDevices => {} // Handled earlier before device connection
+        Args::DumpDevices => {}
+        Args::Probe => {
+            dev.probe().unwrap();
+            loop {
+                for event in dev.poll_event().unwrap() {
+                    println!("Event: {event:?}");
+                }
+            }
+        }
     }
 }

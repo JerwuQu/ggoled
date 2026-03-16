@@ -168,6 +168,7 @@ enum DrawCommand {
     Pause,
     SetShiftMode(ShiftMode),
     Stop,
+    Probe,
 }
 
 #[derive(Debug)]
@@ -231,6 +232,7 @@ fn run_draw_device_thread(
                 DrawCommand::Pause => playing = false,
                 DrawCommand::SetShiftMode(mode) => shift_mode = mode,
                 DrawCommand::Stop => stop_after_frame = true,
+                DrawCommand::Probe => _ = dev.probe(),
             }
         }
 
@@ -471,6 +473,9 @@ impl DrawDevice {
     }
     pub fn pause(&mut self) {
         self.cmd_sender.send(DrawCommand::Pause).unwrap();
+    }
+    pub fn probe(&mut self) {
+        self.cmd_sender.send(DrawCommand::Probe).unwrap();
     }
 }
 impl Drop for DrawDevice {
