@@ -1,11 +1,11 @@
-use super::Media;
+use super::{Media, OSFeatures};
 use mpris::{PlaybackStatus, PlayerFinder};
 
-pub struct MediaControl {
+pub struct OSImpl {
     pf: Option<PlayerFinder>,
 }
-impl MediaControl {
-    pub fn new() -> MediaControl {
+impl OSFeatures for OSImpl {
+    fn new() -> Self {
         let pf = match PlayerFinder::new() {
             Ok(pf) => Some(pf),
             Err(err) => {
@@ -13,9 +13,9 @@ impl MediaControl {
                 None
             }
         };
-        MediaControl { pf }
+        Self { pf }
     }
-    pub fn get_media(&self) -> Option<Media> {
+    fn get_media(&mut self) -> Option<Media> {
         let pf = self.pf.as_ref()?;
         let player = pf.find_active().ok()?;
         let status = player.get_playback_status().ok()?;
@@ -31,9 +31,8 @@ impl MediaControl {
             artist: artist.to_string(),
         })
     }
-}
-
-pub fn get_idle_seconds() -> usize {
-    // TODO
-    0
+    fn get_idle_seconds(&mut self) -> usize {
+        // TODO
+        0
+    }
 }

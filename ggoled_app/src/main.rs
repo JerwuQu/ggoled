@@ -5,7 +5,7 @@ mod os;
 use chrono::{DateTime, Local, TimeDelta, Timelike};
 use ggoled_draw::{DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer, bitmap_from_memory};
 use ggoled_lib::Device;
-use os::{Media, MediaControl, get_idle_seconds};
+use os::{Media, OSFeatures, OSImpl};
 use rfd::{MessageDialog, MessageLevel};
 use sdl3_sys::everything as sdl;
 use serde::{Deserialize, Serialize};
@@ -266,8 +266,8 @@ fn main() {
 
     let tm_idle_check = menu_check(menu, c"Screensaver when idle", config.idle_timeout);
     bind_menu_event(tm_idle_check, &menu_tx, MenuEvent::ToggleCheck);
-    // TODO: implement idle check on linux
-    #[cfg(target_os = "linux")]
+    // TODO: implement idle check on linux and macos
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     unsafe {
         config.idle_timeout = false;
         sdl::SDL_SetTrayEntryChecked(tm_idle_check, false);
@@ -322,7 +322,7 @@ fn main() {
     };
 
     // State
-    let mgr = MediaControl::new();
+    let mut os = OSImpl::new();
     let mut last_time = Local::now() - TimeDelta::seconds(1);
     let mut last_media: Option<Media> = None;
     let mut time_layers: Vec<LayerId> = vec![];
@@ -432,7 +432,7 @@ fn main() {
             }
 
             // Check if idle
-            let idle_seconds = get_idle_seconds();
+            let idle_seconds = os.get_idle_seconds();
             if config.idle_timeout && idle_seconds >= IDLE_TIMEOUT_SECS {
                 dev.clear_layers(); // clear screen when idle
                 notif_layer = None;
@@ -450,7 +450,7 @@ fn main() {
                 }
 
                 // Fetch media once a second (before pausing screen)
-                let media = if config.show_media { mgr.get_media() } else { None };
+                let media = if config.show_media { os.get_media() } else { None };
 
                 dev.pause();
 

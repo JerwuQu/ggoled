@@ -1,4 +1,4 @@
-use super::Media;
+use super::{Media, OSFeatures};
 use std::mem::size_of;
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionManager, GlobalSystemMediaTransportControlsSessionPlaybackStatus,
@@ -8,18 +8,18 @@ use windows_sys::Win32::{
     UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO},
 };
 
-pub struct MediaControl {
+pub struct OSImpl {
     mgr: Option<GlobalSystemMediaTransportControlsSessionManager>,
 }
-impl MediaControl {
-    pub fn new() -> MediaControl {
+impl OSFeatures for OSImpl {
+    fn new() -> Self {
         let mgr = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
             .map(|req| req.join().ok())
             .ok()
             .flatten();
-        MediaControl { mgr }
+        Self { mgr }
     }
-    pub fn get_media(&self) -> Option<Media> {
+    fn get_media(&mut self) -> Option<Media> {
         if let Some(mgr) = &self.mgr {
             (|| {
                 let session = mgr.GetCurrentSession()?;
@@ -42,18 +42,17 @@ impl MediaControl {
             None
         }
     }
-}
-
-pub fn get_idle_seconds() -> usize {
-    unsafe {
-        let mut lastinput = LASTINPUTINFO {
-            cbSize: size_of::<LASTINPUTINFO>() as u32,
-            dwTime: 0,
-        };
-        if GetLastInputInfo(&mut lastinput) != 0 {
-            ((GetTickCount() - lastinput.dwTime) / 1000) as usize
-        } else {
-            0
+    fn get_idle_seconds(&mut self) -> usize {
+        unsafe {
+            let mut lastinput = LASTINPUTINFO {
+                cbSize: size_of::<LASTINPUTINFO>() as u32,
+                dwTime: 0,
+            };
+            if GetLastInputInfo(&mut lastinput) != 0 {
+                ((GetTickCount() - lastinput.dwTime) / 1000) as usize
+            } else {
+                0
+            }
         }
     }
 }
