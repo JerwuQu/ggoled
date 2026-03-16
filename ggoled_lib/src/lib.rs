@@ -297,7 +297,7 @@ impl Device {
         Ok(())
     }
 
-    /// Probe to fetch initial data.
+    /// Probe device to fetch current state.
     /// Data is received via events.
     pub fn probe(&self) -> anyhow::Result<()> {
         let mut report = [0; 64];

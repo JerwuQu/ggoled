@@ -38,9 +38,10 @@ For Windows you can download the latest builds either from [GitHub Actions](http
    - **A:** Using installed SDL3: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled ggoled_app`
    - **B:** Building SDL3 from source: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git --features sdl3-static ggoled ggoled_app`
    - **C:** CLI only: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled`
-3. (Linux only) To run ggoled without root on you need to:
+3. (_Linux only_) To run ggoled without root you need to:
    1. Copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/`
    2. Run `sudo udevadm control --reload && sudo udevadm trigger`.
+4. (_Linux only, optional_) Install the systemd service: see below.
 
 ## CLI usage examples
 

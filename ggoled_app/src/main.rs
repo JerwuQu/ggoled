@@ -2,7 +2,7 @@
 
 mod os;
 
-use chrono::{Local, TimeDelta, Timelike};
+use chrono::{DateTime, Local, TimeDelta, Timelike};
 use ggoled_draw::{DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer, bitmap_from_memory};
 use ggoled_lib::Device;
 use os::{Media, MediaControl, get_idle_seconds};
@@ -45,6 +45,16 @@ impl ConfigShiftMode {
     }
 }
 
+#[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq)]
+enum StatusNotifyMode {
+    Off,
+    #[default]
+    Notify,
+    Always,
+    WhenConnected,
+    WhenDisconnected,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 struct ConfigFont {
     path: PathBuf,
@@ -59,7 +69,7 @@ struct Config {
     show_media: bool,
     idle_timeout: bool,
     oled_shift: ConfigShiftMode,
-    show_notifications: bool,
+    status_notify: StatusNotifyMode,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -69,7 +79,7 @@ impl Default for Config {
             show_media: true,
             idle_timeout: true,
             oled_shift: ConfigShiftMode::default(),
-            show_notifications: true,
+            status_notify: StatusNotifyMode::default(),
         }
     }
 }
@@ -168,6 +178,7 @@ enum MenuEvent {
     ToggleCheck,
     SetTimeMode(ConfigTimeMode),
     SetShiftMode(ConfigShiftMode),
+    SetStatusNotifyMode(StatusNotifyMode),
     Quit,
 }
 
@@ -238,8 +249,21 @@ fn main() {
     );
     let tm_media_check = menu_check(menu, c"Show playing media", config.show_media);
     bind_menu_event(tm_media_check, &menu_tx, MenuEvent::ToggleCheck);
-    let tm_notif_check = menu_check(menu, c"Show connection notifications", config.show_notifications);
-    bind_menu_event(tm_notif_check, &menu_tx, MenuEvent::ToggleCheck);
+    let tm_status_notify = RadioMenu::new(
+        menu,
+        c"Connection status icon",
+        &[
+            (c"Off", StatusNotifyMode::Off),
+            (c"Notify", StatusNotifyMode::Notify),
+            (c"Always (burn-in risk)", StatusNotifyMode::Always),
+            (c"When connected (burn-in risk)", StatusNotifyMode::WhenConnected),
+            (c"When disconnected (burn-in risk)", StatusNotifyMode::WhenDisconnected),
+        ],
+        config.status_notify,
+        &menu_tx,
+        MenuEvent::SetStatusNotifyMode,
+    );
+
     let tm_idle_check = menu_check(menu, c"Screensaver when idle", config.idle_timeout);
     bind_menu_event(tm_idle_check, &menu_tx, MenuEvent::ToggleCheck);
     // TODO: implement idle check on linux
@@ -266,6 +290,37 @@ fn main() {
     let icon_hs_disconnect =
         Arc::new(bitmap_from_memory(include_bytes!("../assets/headset_disconnected.png"), 0x80).unwrap());
 
+    let notif_update = |dev: &mut DrawDevice,
+                        layer: &mut Option<LayerId>,
+                        mode: StatusNotifyMode,
+                        connected: bool,
+                        expiry: DateTime<Local>| {
+        if let Some(id) = layer.take() {
+            dev.remove_layer(id);
+        }
+        let show = match mode {
+            StatusNotifyMode::Off => false,
+            StatusNotifyMode::Notify => Local::now() < expiry,
+            StatusNotifyMode::Always => true,
+            StatusNotifyMode::WhenConnected => connected,
+            StatusNotifyMode::WhenDisconnected => !connected,
+        };
+        if show {
+            *layer = Some(
+                dev.add_layer(ggoled_draw::DrawLayer::Image {
+                    bitmap: (if connected {
+                        &icon_hs_connect
+                    } else {
+                        &icon_hs_disconnect
+                    })
+                    .clone(),
+                    x: 4,
+                    y: 4,
+                }),
+            );
+        }
+    };
+
     // State
     let mgr = MediaControl::new();
     let mut last_time = Local::now() - TimeDelta::seconds(1);
@@ -274,7 +329,7 @@ fn main() {
     let mut media_layers: Vec<LayerId> = vec![];
     let mut notif_layer: Option<LayerId> = None;
     let mut notif_expiry = Local::now();
-    let mut is_connected = None; // TODO: probe on startup
+    let mut is_connected = false;
 
     // Connect
     let mut dev = DrawDevice::new(dialog_unwrap(Device::connect()), 30);
@@ -304,13 +359,18 @@ fn main() {
                 MenuEvent::ToggleCheck => {
                     config_updated = true;
                     config.show_media = unsafe { sdl::SDL_GetTrayEntryChecked(tm_media_check) };
-                    config.show_notifications = unsafe { sdl::SDL_GetTrayEntryChecked(tm_notif_check) };
                     config.idle_timeout = unsafe { sdl::SDL_GetTrayEntryChecked(tm_idle_check) };
                 }
                 MenuEvent::SetTimeMode(mode) => {
                     config_updated = true;
                     config.time_mode = mode;
                     tm_time_radio.update_checked(mode);
+                }
+                MenuEvent::SetStatusNotifyMode(mode) => {
+                    config_updated = true;
+                    config.status_notify = mode;
+                    tm_status_notify.update_checked(mode);
+                    notif_update(&mut dev, &mut notif_layer, mode, is_connected, notif_expiry);
                 }
                 MenuEvent::SetShiftMode(mode) => {
                     config_updated = true;
@@ -333,31 +393,24 @@ fn main() {
             println!("event: {:?}", event);
             match event {
                 DrawEvent::DeviceDisconnected => unsafe { sdl::SDL_SetTrayIcon(tray, icon_error.surf) },
-                DrawEvent::DeviceReconnected => unsafe { sdl::SDL_SetTrayIcon(tray, icon.surf) },
+                DrawEvent::DeviceReconnected => {
+                    unsafe { sdl::SDL_SetTrayIcon(tray, icon.surf) }
+                    dev.probe(); // re-probe when base station reappears
+                }
                 #[allow(clippy::single_match)]
                 DrawEvent::DeviceEvent(event) => match event {
                     ggoled_lib::DeviceEvent::HeadsetConnection { wireless, .. } => {
-                        if Some(wireless) != is_connected {
-                            is_connected = Some(wireless);
-                            if config.show_notifications {
-                                if let Some(id) = notif_layer {
-                                    dev.remove_layer(id);
-                                }
-                                notif_layer = Some(
-                                    dev.add_layer(ggoled_draw::DrawLayer::Image {
-                                        bitmap: (if wireless {
-                                            &icon_hs_connect
-                                        } else {
-                                            &icon_hs_disconnect
-                                        })
-                                        .clone(),
-                                        x: 8,
-                                        y: 8,
-                                    }),
-                                );
-                                notif_expiry = Local::now() + NOTIF_DUR;
-                                force_redraw = true;
-                            }
+                        if wireless != is_connected {
+                            is_connected = wireless;
+                            notif_expiry = Local::now() + NOTIF_DUR;
+                            notif_update(
+                                &mut dev,
+                                &mut notif_layer,
+                                config.status_notify,
+                                is_connected,
+                                notif_expiry,
+                            );
+                            force_redraw = true;
                         }
                     }
                     _ => {}
@@ -370,21 +423,32 @@ fn main() {
         if time.second() != last_time.second() || force_redraw {
             last_time = time;
 
-            // Remove expired notifications
-            if let Some(id) = notif_layer
+            // Remove expired notifications in Notify mode
+            if config.status_notify == StatusNotifyMode::Notify
                 && time >= notif_expiry
+                && let Some(layer) = notif_layer.take()
             {
-                dev.remove_layer(id);
-                notif_layer = None;
+                dev.remove_layer(layer);
             }
 
             // Check if idle
             let idle_seconds = get_idle_seconds();
             if config.idle_timeout && idle_seconds >= IDLE_TIMEOUT_SECS {
-                // TODO: perhaps notifications should be kept?
                 dev.clear_layers(); // clear screen when idle
+                notif_layer = None;
                 last_media = None; // reset media so we check again when not idle
             } else {
+                // Update notifications
+                if notif_layer.is_none() {
+                    notif_update(
+                        &mut dev,
+                        &mut notif_layer,
+                        config.status_notify,
+                        is_connected,
+                        notif_expiry,
+                    );
+                }
+
                 // Fetch media once a second (before pausing screen)
                 let media = if config.show_media { mgr.get_media() } else { None };
 
