@@ -1,23 +1,16 @@
 name: Build
 on: [push, pull_request]
 jobs:
-  release:
-    name: Release - ${{ matrix.platform.target }}
-    strategy:
-      matrix:
-        platform:
-          - os: ubuntu-latest
-            target: x86_64-pc-windows-gnu
-            cli: ggoled.exe
-            app: ggoled_app.exe
-    runs-on: ${{ matrix.platform.os }}
+  windows-build:
+    name: Windows build
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Cache
         uses: actions/cache@v4
         with:
-          key: ${{ matrix.platform.target }}-${{ matrix.platform.os }}-${{ hashFiles('Cargo.lock') }}
+          key: x86_64-pc-windows-gnu-${{ hashFiles('Cargo.lock') }}
           path: |
             ~/.cargo
             target
@@ -26,13 +19,13 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          target: ${{ matrix.platform.target }}
+          target: x86_64-pc-windows-gnu
       - name: Build
-        run: cargo build --release --locked --features sdl3-static --target ${{ matrix.platform.target }}
+        run: cargo build --release --locked --features sdl3-static --target x86_64-pc-windows-gnu
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform.target }}
+          name: x86_64-pc-windows-gnu
           path: |
-            target/${{ matrix.platform.target }}/release/${{ matrix.platform.cli }}
-            target/${{ matrix.platform.target }}/release/${{ matrix.platform.app }}
+            target/x86_64-pc-windows-gnu/release/ggoled.exe
+            target/x86_64-pc-windows-gnu/release/ggoled_app.exe
