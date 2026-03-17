@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=ggoled app
+Comment=SteelSeries OLED tray application
+Exec=ggoled_app
+Terminal=false
+Icon=se.ramse.ggoled
+Type=Application
+Categories=Utility;

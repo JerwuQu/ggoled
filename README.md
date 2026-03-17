@@ -29,7 +29,23 @@ PRs and issues for similar devices are welcome!
 
 ## Install
 
-For Windows you can download the latest builds either from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions?query=branch%3Amaster) or from [nightly.link (direct download)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip).
+Pre-built binaries are available from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions?query=branch%3Amaster) or via nightly.link.
+
+### Windows
+
+1. Download: [x86_64-pc-windows-gnu.zip (via nightly.link)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip)
+2. Extract and run `ggoled_app.exe`.
+
+### Linux (Flatpak)
+
+1. Download: [ggoled-x86_64.flatpak.zip (via nightly.link)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/ggoled-x86_64.flatpak.zip)
+2. Extract the zip and install: `flatpak install ggoled.flatpak`
+3. Install the udev rules so the device is accessible without root:
+   1. Copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/`
+   2. Run `sudo udevadm control --reload && sudo udevadm trigger`.
+4. Launch via your application menu or via `flatpak run se.ramse.ggoled`.
+
+The CLI is also available: `flatpak run --command=ggoled se.ramse.ggoled text Hello!`.
 
 ### From source
 
@@ -38,9 +54,7 @@ For Windows you can download the latest builds either from [GitHub Actions](http
    - **A:** Using installed SDL3: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled ggoled_app`
    - **B:** Building SDL3 from source: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git --features sdl3-static ggoled ggoled_app`
    - **C:** CLI only: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled`
-3. (_Linux only_) To run ggoled without root you need to:
-   1. Copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/`
-   2. Run `sudo udevadm control --reload && sudo udevadm trigger`.
+3. (_Linux only_) Install the udev rules as described in the [flatpak section](#linux-flatpak) above to run without root.
 4. (_Linux only, optional_) Install the systemd service: see below.
 
 ## CLI usage examples

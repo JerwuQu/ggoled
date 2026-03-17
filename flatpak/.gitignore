@@ -1,0 +1,6 @@
+.flatpak-builder/
+build-dir/
+cargo-config.toml
+cargo-vendor/
+repo/
+*.flatpak

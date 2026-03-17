@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>se.ramse.ggoled</id>
+  <name>ggoled</name>
+  <summary>SteelSeries Arctis Nova Pro Base Station OLED integration</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <description>
+    <p>
+      Put custom graphics on your SteelSeries Arctis Nova Pro Base Station
+      128x64 OLED screen. Shows the current time and currently playing media,
+      with features to prevent OLED burn-in.
+    </p>
+  </description>
+  <launchable type="desktop-id">se.ramse.ggoled.desktop</launchable>
+  <url type="homepage">https://github.com/JerwuQu/ggoled</url>
+</component>

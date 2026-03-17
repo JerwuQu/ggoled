@@ -6,9 +6,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           key: x86_64-pc-windows-gnu-${{ hashFiles('Cargo.lock') }}
           path: |
@@ -29,3 +29,28 @@ jobs:
           path: |
             target/x86_64-pc-windows-gnu/release/ggoled.exe
             target/x86_64-pc-windows-gnu/release/ggoled_app.exe
+  flatpak-build:
+    name: Flatpak build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Cache
+        uses: actions/cache@v5
+        with:
+          key: flatpak-${{ hashFiles('Cargo.lock', 'flatpak/se.ramse.ggoled.yml') }}
+          path: |
+            ~/.cargo
+            ~/.local/share/flatpak
+            flatpak/.flatpak-builder
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install flatpak
+        run: sudo apt update && sudo apt install flatpak dbus-x11
+      - name: Build
+        run: dbus-run-session bash flatpak/build.sh
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggoled-x86_64.flatpak
+          path: flatpak/ggoled-x86_64.flatpak
