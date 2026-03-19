@@ -54,3 +54,27 @@ jobs:
         with:
           name: ggoled-x86_64.flatpak
           path: flatpak/ggoled-x86_64.flatpak
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows-build, flatpak-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts (windows-build)
+        uses: actions/download-artifact@v8
+        with:
+          name: x86_64-pc-windows-gnu
+          path: binaries
+      - name: Download artifacts (flatpak-build)
+        uses: actions/download-artifact@v8
+        with:
+          name: ggoled-x86_64.flatpak
+          path: binaries
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            binaries/**/*.exe
+            binaries/**/*.flatpak

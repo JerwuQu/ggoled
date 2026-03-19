@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "ggoled"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "ggoled_app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -749,7 +749,7 @@ dependencies = [
 
 [[package]]
 name = "ggoled_draw"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "ggoled_lib",
@@ -761,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "ggoled_lib"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bit-vec",
