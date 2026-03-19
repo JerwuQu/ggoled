@@ -29,17 +29,19 @@ PRs and issues for similar devices are welcome!
 
 ## Install
 
-Pre-built binaries are available from [GitHub Actions](https://github.com/JerwuQu/ggoled/actions?query=branch%3Amaster) or via nightly.link.
+Pre-built binaries for released versions are available as [GitHub Releases](https://github.com/JerwuQu/ggoled/releases/latest). There are also [GitHub Actions](https://github.com/JerwuQu/ggoled/actions?query=branch%3Amaster) for developer builds.
 
 ### Windows
 
-1. Download: [x86_64-pc-windows-gnu.zip (via nightly.link)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/x86_64-pc-windows-gnu.zip)
-2. Extract and run `ggoled_app.exe`.
+1. Download:
+   - [`ggoled_app.exe`](https://github.com/JerwuQu/ggoled/releases/latest/download/ggoled_app.exe) for the app.
+   - [`ggoled.exe`](https://github.com/JerwuQu/ggoled/releases/latest/download/ggoled.exe) for the CLI.
+2. Run `ggoled_app.exe`.
 
 ### Linux (Flatpak)
 
-1. Download: [ggoled-x86_64.flatpak.zip (via nightly.link)](https://nightly.link/JerwuQu/ggoled/workflows/build/master/ggoled-x86_64.flatpak.zip)
-2. Extract the zip and install: `flatpak install ggoled-x86_64.flatpak`
+1. Download [`ggoled-x86_64.flatpak`](https://github.com/JerwuQu/ggoled/releases/latest/download/ggoled-x86_64.flatpak).
+2. Install: `flatpak install ggoled-x86_64.flatpak`
 3. Install the udev rules so the device is accessible without root:
    1. Copy [`11-steelseries-arctis-nova.rules`](https://github.com/JerwuQu/ggoled/blob/master/11-steelseries-arctis-nova.rules) into `/etc/udev/rules.d/`
    2. Run `sudo udevadm control --reload && sudo udevadm trigger`.
