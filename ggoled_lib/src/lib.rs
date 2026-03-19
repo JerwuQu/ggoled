@@ -7,6 +7,8 @@ use std::{cmp::min, time::Duration};
 // NOTE: these work for Arctis Nova Pro but might not for different products!
 const SCREEN_REPORT_SPLIT_SZ: usize = 64;
 const SCREEN_REPORT_SIZE: usize = 1024;
+const SCREEN_WIDTH: usize = 128;
+const SCREEN_HEIGHT: usize = 64;
 
 type DrawReport = [u8; SCREEN_REPORT_SIZE];
 
@@ -139,8 +141,8 @@ impl Device {
 
         Ok(Device {
             dev,
-            width: 128,
-            height: 64,
+            width: SCREEN_WIDTH,
+            height: SCREEN_HEIGHT,
         })
     }
 

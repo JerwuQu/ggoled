@@ -16,7 +16,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, mpsc},
     thread::sleep,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const IDLE_TIMEOUT_SECS: usize = 60;
@@ -229,7 +229,7 @@ fn main() {
     assert!(unsafe { sdl::SDL_Init(sdl::SDL_INIT_VIDEO) });
     let icon = Icon::load(include_bytes!("../assets/ggoled.png"));
     let icon_error = Icon::load(include_bytes!("../assets/ggoled_error.png"));
-    let tray = unsafe { sdl::SDL_CreateTray(icon.surf, c"ggoled".as_ptr()) };
+    let tray = unsafe { sdl::SDL_CreateTray(icon_error.surf, c"ggoled".as_ptr()) };
     assert!(!tray.is_null());
     let menu = unsafe { sdl::SDL_CreateTrayMenu(tray) };
     assert!(!menu.is_null());
@@ -331,8 +331,30 @@ fn main() {
     let mut notif_expiry = Local::now();
     let mut is_connected = false;
 
-    // Connect
-    let mut dev = DrawDevice::new(dialog_unwrap(Device::connect()), 30);
+    // Wait for connect
+    let mut last_connect = Instant::now() - Duration::from_secs(1);
+    let dev = loop {
+        let mut event = sdl::SDL_Event::default();
+        while unsafe { sdl::SDL_PollEvent(&mut event) } {
+            if sdl::SDL_EventType(unsafe { event.r#type }) == sdl::SDL_EVENT_QUIT {
+                return;
+            }
+        }
+        while let Ok(event) = menu_rx.try_recv() {
+            if matches!(event, MenuEvent::Quit) {
+                return;
+            }
+        }
+        if last_connect.elapsed() >= Duration::from_secs(1) {
+            last_connect = Instant::now();
+            if let Ok(d) = Device::connect() {
+                break d;
+            }
+        }
+        sleep(Duration::from_millis(10));
+    };
+    unsafe { sdl::SDL_SetTrayIcon(tray, icon.surf) };
+    let mut dev = DrawDevice::new(dev, 30);
     if let Some(font) = &config.font {
         dev.texter = dialog_unwrap(TextRenderer::load_from_file(&font.path, font.size));
     }
