@@ -156,6 +156,9 @@ enum Args {
         value: u8,
     },
 
+    #[command(about = "Print version")]
+    Version,
+
     #[command(about = "Dump devices list to stdout", hide = true)]
     DumpDevices,
 
@@ -165,7 +168,10 @@ enum Args {
 
 fn main() {
     let args = Args::parse();
-    if let Args::DumpDevices = args {
+    if let Args::Version = args {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return;
+    } else if let Args::DumpDevices = args {
         Device::dump_devices();
         return;
     }
@@ -300,7 +306,8 @@ fn main() {
         Args::Brightness { value } => {
             dev.set_brightness(value).unwrap();
         }
-        Args::DumpDevices => {}
+        // handled above
+        Args::Version | Args::DumpDevices => {}
         Args::Probe => {
             dev.probe().unwrap();
             loop {
