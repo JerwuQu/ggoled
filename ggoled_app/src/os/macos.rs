@@ -9,6 +9,10 @@ impl OSFeatures for OSImpl {
         let npp = NowPlayingPerl::new();
         Self { npp }
     }
+
+    fn supports_media(&self) -> bool {
+        true
+    }
     fn get_media(&mut self) -> Option<Media> {
         let guard = self.npp.get_info();
         let info = guard.as_ref()?;
@@ -21,8 +25,13 @@ impl OSFeatures for OSImpl {
             None
         }
     }
-    fn get_idle_seconds(&mut self) -> usize {
+
+    fn supports_idle(&self) -> bool {
         // TODO
-        0
+        false
+    }
+    fn is_idle(&mut self) -> bool {
+        // TODO
+        false
     }
 }

@@ -33,6 +33,8 @@ winresource = "0.1.30"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris = "2"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 media-remote = "0.3.6"

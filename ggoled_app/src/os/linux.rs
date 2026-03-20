@@ -1,8 +1,12 @@
 use super::{Media, OSFeatures};
 use mpris::{PlaybackStatus, PlayerFinder};
 
+mod wayland;
+use wayland::IdleTracker;
+
 pub struct OSImpl {
     pf: Option<PlayerFinder>,
+    idle_tracker: Option<IdleTracker>,
 }
 impl OSFeatures for OSImpl {
     fn new() -> Self {
@@ -13,7 +17,15 @@ impl OSFeatures for OSImpl {
                 None
             }
         };
-        Self { pf }
+        let idle_tracker = IdleTracker::new();
+        if idle_tracker.is_none() {
+            eprintln!("failed to init wayland idle tracker");
+        }
+        Self { pf, idle_tracker }
+    }
+
+    fn supports_media(&self) -> bool {
+        self.pf.is_some()
     }
     fn get_media(&mut self) -> Option<Media> {
         let pf = self.pf.as_ref()?;
@@ -31,8 +43,21 @@ impl OSFeatures for OSImpl {
             artist: artist.to_string(),
         })
     }
-    fn get_idle_seconds(&mut self) -> usize {
-        // TODO
-        0
+
+    fn supports_idle(&self) -> bool {
+        self.idle_tracker.is_some()
+    }
+    fn is_idle(&mut self) -> bool {
+        let Some(tracker) = self.idle_tracker.as_mut() else {
+            return false;
+        };
+        match tracker.get_idle() {
+            Ok(idle) => idle,
+            Err(err) => {
+                eprintln!("wayland idle tracker failed: {err}");
+                self.idle_tracker = None;
+                false
+            }
+        }
     }
 }

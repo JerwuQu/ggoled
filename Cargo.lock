@@ -742,6 +742,8 @@ dependencies = [
  "sdl3-sys",
  "serde",
  "toml 1.0.6+spec-1.1.0",
+ "wayland-client",
+ "wayland-protocols",
  "windows",
  "windows-sys 0.61.2",
  "winresource",

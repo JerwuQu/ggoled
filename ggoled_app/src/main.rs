@@ -19,7 +19,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-const IDLE_TIMEOUT_SECS: usize = 60;
 const NOTIF_DUR: Duration = Duration::from_secs(5);
 
 #[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq)]
@@ -225,6 +224,7 @@ impl<T: Copy + PartialEq> RadioMenu<T> {
 fn main() {
     // Initial loading
     let mut config = Config::load();
+    let mut os = OSImpl::new();
 
     // Create tray icon with menu
     unsafe { sdl::SDL_SetHint(sdl::SDL_HINT_VIDEO_ALLOW_SCREENSAVER, c"1".as_ptr()) };
@@ -243,6 +243,7 @@ fn main() {
         sdl::SDL_SetTrayEntryEnabled(tm_version, false);
         sdl::SDL_InsertTrayEntryAt(menu, -1, std::ptr::null(), sdl::SDL_TRAYENTRY_BUTTON); // separator
     }
+
     let tm_time_radio = RadioMenu::new(
         menu,
         c"Time",
@@ -255,8 +256,18 @@ fn main() {
         &menu_tx,
         MenuEvent::SetTimeMode,
     );
+
     let tm_media_check = menu_check(menu, c"Show playing media", config.show_media);
-    bind_menu_event(tm_media_check, &menu_tx, MenuEvent::ToggleCheck);
+    if os.supports_media() {
+        bind_menu_event(tm_media_check, &menu_tx, MenuEvent::ToggleCheck);
+    } else {
+        unsafe {
+            config.show_media = false;
+            sdl::SDL_SetTrayEntryChecked(tm_media_check, false);
+            sdl::SDL_SetTrayEntryEnabled(tm_media_check, false);
+        }
+    }
+
     let tm_status_notify = RadioMenu::new(
         menu,
         c"Connection status icon",
@@ -273,14 +284,16 @@ fn main() {
     );
 
     let tm_idle_check = menu_check(menu, c"Screensaver when idle", config.idle_timeout);
-    bind_menu_event(tm_idle_check, &menu_tx, MenuEvent::ToggleCheck);
-    // TODO: implement idle check on linux and macos
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    unsafe {
-        config.idle_timeout = false;
-        sdl::SDL_SetTrayEntryChecked(tm_idle_check, false);
-        sdl::SDL_SetTrayEntryEnabled(tm_idle_check, false);
+    if os.supports_idle() {
+        bind_menu_event(tm_idle_check, &menu_tx, MenuEvent::ToggleCheck);
+    } else {
+        unsafe {
+            config.idle_timeout = false;
+            sdl::SDL_SetTrayEntryChecked(tm_idle_check, false);
+            sdl::SDL_SetTrayEntryEnabled(tm_idle_check, false);
+        }
     }
+
     let tm_shift_radio = RadioMenu::new(
         menu,
         c"OLED screen shift",
@@ -336,7 +349,6 @@ fn main() {
     };
 
     // State
-    let mut os = OSImpl::new();
     let mut last_time = Local::now() - TimeDelta::seconds(1);
     let mut last_media: Option<Media> = None;
     let mut time_layers: Vec<LayerId> = vec![];
@@ -468,8 +480,7 @@ fn main() {
             }
 
             // Check if idle
-            let idle_seconds = os.get_idle_seconds();
-            if config.idle_timeout && idle_seconds >= IDLE_TIMEOUT_SECS {
+            if config.idle_timeout && os.is_idle() {
                 dev.clear_layers(); // clear screen when idle
                 notif_layer = None;
                 last_media = None; // reset media so we check again when not idle

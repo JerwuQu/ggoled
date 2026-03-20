@@ -1,3 +1,5 @@
+pub const IDLE_TIMEOUT_MS: u32 = 60_000;
+
 #[derive(PartialEq)]
 pub struct Media {
     pub title: String,
@@ -8,8 +10,12 @@ pub trait OSFeatures {
     fn new() -> Self
     where
         Self: Sized;
+
+    fn supports_media(&self) -> bool;
     fn get_media(&mut self) -> Option<Media>;
-    fn get_idle_seconds(&mut self) -> usize;
+
+    fn supports_idle(&self) -> bool;
+    fn is_idle(&mut self) -> bool;
 }
 
 #[cfg(target_os = "windows")]

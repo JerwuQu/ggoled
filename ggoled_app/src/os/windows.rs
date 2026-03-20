@@ -1,4 +1,4 @@
-use super::{Media, OSFeatures};
+use super::{IDLE_TIMEOUT_MS, Media, OSFeatures};
 use std::mem::size_of;
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionManager, GlobalSystemMediaTransportControlsSessionPlaybackStatus,
@@ -18,6 +18,10 @@ impl OSFeatures for OSImpl {
             .ok()
             .flatten();
         Self { mgr }
+    }
+
+    fn supports_media(&self) -> bool {
+        self.mgr.is_some()
     }
     fn get_media(&mut self) -> Option<Media> {
         if let Some(mgr) = &self.mgr {
@@ -42,17 +46,17 @@ impl OSFeatures for OSImpl {
             None
         }
     }
-    fn get_idle_seconds(&mut self) -> usize {
+
+    fn supports_idle(&self) -> bool {
+        true
+    }
+    fn is_idle(&mut self) -> bool {
         unsafe {
             let mut lastinput = LASTINPUTINFO {
                 cbSize: size_of::<LASTINPUTINFO>() as u32,
                 dwTime: 0,
             };
-            if GetLastInputInfo(&mut lastinput) != 0 {
-                ((GetTickCount() - lastinput.dwTime) / 1000) as usize
-            } else {
-                0
-            }
+            GetLastInputInfo(&mut lastinput) != 0 && GetTickCount().wrapping_sub(lastinput.dwTime) >= IDLE_TIMEOUT_MS
         }
     }
 }
