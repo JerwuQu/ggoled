@@ -33,14 +33,16 @@ enum ConfigTimeMode {
 #[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq)]
 enum ConfigShiftMode {
     Off,
+    Low,
     #[default]
-    Simple,
+    High,
 }
 impl ConfigShiftMode {
     fn to_api(self) -> ShiftMode {
         match self {
             ConfigShiftMode::Off => ShiftMode::Off,
-            ConfigShiftMode::Simple => ShiftMode::Simple,
+            ConfigShiftMode::Low => ShiftMode::Low,
+            ConfigShiftMode::High => ShiftMode::High,
         }
     }
 }
@@ -282,7 +284,11 @@ fn main() {
     let tm_shift_radio = RadioMenu::new(
         menu,
         c"OLED screen shift",
-        &[(c"Off", ConfigShiftMode::Off), (c"Simple", ConfigShiftMode::Simple)],
+        &[
+            (c"Off", ConfigShiftMode::Off),
+            (c"Low", ConfigShiftMode::Low),
+            (c"High", ConfigShiftMode::High),
+        ],
         config.oled_shift,
         &menu_tx,
         MenuEvent::SetShiftMode,

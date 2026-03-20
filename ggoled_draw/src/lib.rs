@@ -160,7 +160,8 @@ pub enum DrawLayer {
 
 pub enum ShiftMode {
     Off,
-    Simple,
+    Low,
+    High,
 }
 
 enum DrawCommand {
@@ -193,17 +194,34 @@ struct DrawLayerState {
 }
 
 const OLED_SHIFT_PERIOD: Duration = Duration::from_secs(90);
-const OLED_SHIFTS: [(isize, isize); 9] = [
-    (0, 0),
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-];
+
+fn square_perimeter(out: &mut Vec<(isize, isize)>, r: isize) {
+    for x in 0..=r {
+        out.push((x, -r));
+    }
+    for y in (-r + 1)..=r {
+        out.push((r, y));
+    }
+    for x in ((-r)..r).rev() {
+        out.push((x, r));
+    }
+    for y in ((-r)..r).rev() {
+        out.push((-r, y));
+    }
+    for x in (-r + 1)..0 {
+        out.push((x, -r));
+    }
+}
+fn square_shift_calc(r: isize) -> Vec<(isize, isize)> {
+    let mut result = vec![(0, 0)];
+    for r in 1..=r {
+        square_perimeter(&mut result, r);
+    }
+    for r in (1..r).rev() {
+        square_perimeter(&mut result, r);
+    }
+    result
+}
 
 const RECONNECT_PERIOD: Duration = Duration::from_secs(1);
 
@@ -217,7 +235,10 @@ fn run_draw_device_thread(
     let frame_delay = Duration::from_nanos(1_000_000_000 / fps as u64);
     let mut prev_screen = Bitmap::new(0, 0, false);
     let mut playing = false;
-    let mut oled_shift = 0;
+    let shift_pos_low = square_shift_calc(1);
+    let shift_pos_high = square_shift_calc(4);
+    let mut shift_idx_low = 0;
+    let mut shift_idx_high = 0;
     let mut last_shift = Instant::now();
     let mut shift_mode = ShiftMode::Off;
     let mut connected = true;
@@ -250,12 +271,19 @@ fn run_draw_device_thread(
             // Handle OLED shifts
             let (shift_x, shift_y) = match shift_mode {
                 ShiftMode::Off => (0, 0),
-                ShiftMode::Simple => {
+                ShiftMode::Low => {
                     if time.duration_since(last_shift) >= OLED_SHIFT_PERIOD {
-                        oled_shift = (oled_shift + 1) % OLED_SHIFTS.len();
+                        shift_idx_low = (shift_idx_low + 1) % shift_pos_low.len();
                         last_shift = time;
                     }
-                    OLED_SHIFTS[oled_shift]
+                    shift_pos_low[shift_idx_low]
+                }
+                ShiftMode::High => {
+                    if time.duration_since(last_shift) >= OLED_SHIFT_PERIOD {
+                        shift_idx_high = (shift_idx_high + 1) % shift_pos_high.len();
+                        last_shift = time;
+                    }
+                    shift_pos_high[shift_idx_high]
                 }
             };
 
@@ -482,4 +510,26 @@ impl Drop for DrawDevice {
     fn drop(&mut self) {
         self.destroy();
     }
+}
+
+#[cfg(test)]
+#[rustfmt::skip]
+#[test]
+fn shift_pos() {
+    assert_eq!(square_shift_calc(1), &[
+        // center
+        (0, 0),
+        // r=1
+        (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1),
+    ]);
+    assert_eq!(square_shift_calc(2), &[
+        // center
+        (0, 0),
+        // r=1
+        (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1),
+        // r=2
+        (0, -2), (1, -2), (2, -2), (2, -1), (2, 0), (2, 1), (2, 2), (1, 2), (0, 2), (-1, 2), (-2, 2), (-2, 1), (-2, 0), (-2, -1), (-2, -2), (-1, -2),
+        // r=1
+        (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1),
+    ]);
 }
