@@ -24,6 +24,7 @@ This also showcases the burn-in you will get if not careful with OLEDs. The flic
 | SteelSeries Arctis Pro Wired                | 🧐 [#12](https://github.com/JerwuQu/ggoled/issues/12) |
 | SteelSeries Arctis Pro Wireless             | 🧐 [#12](https://github.com/JerwuQu/ggoled/issues/12) |
 | SteelSeries Arctis Nova Elite               | 🧐 [#26](https://github.com/JerwuQu/ggoled/issues/26) |
+| SteelSeries Arctis Nova Pro Omni            | 🧐 [#33](https://github.com/JerwuQu/ggoled/issues/33) |
 
 PRs and issues for similar devices are welcome!
 
