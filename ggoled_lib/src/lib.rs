@@ -61,6 +61,8 @@ pub struct Device {
     dev: DeviceMerge,
     pub width: usize,
     pub height: usize,
+    oled_report_id: u8,
+    info_report_id: u8,
 }
 impl Device {
     /// Connect to a SteelSeries GG device.
@@ -78,7 +80,11 @@ impl Device {
             0x12e0, // Arctis Nova Pro Wireless
             0x12e5, // Arctis Nova Pro Wireless (Xbox)
             0x225d, // Arctis Nova Pro Wireless (Xbox White)
-        ].contains(&d.product_id()) && d.interface_number() == 4
+            0x2244, // Arctis Nova Elite (base station, unofficial/untested - see issue #26)
+        ].contains(&d.product_id())
+            // Nova Elite base station exposes the OLED/info collections on interface 3, not 4
+            // (interface 4 there is an unrelated consumer-control/media-key interface).
+            && d.interface_number() == if d.product_id() == 0x2244 { 3 } else { 4 }
             })
             .collect();
 
@@ -90,6 +96,13 @@ impl Device {
         } else if device_infos.len() > 2 {
             bail!("Too many matching devices connected");
         }
+
+        // The HID report IDs differ by product; Nova Pro uses 6 for both the OLED and
+        // info collections, but the Nova Elite base station declares report ID 1 for its
+        // OLED collection (Col01) and report ID 7 for its info collection (Col02).
+        let is_nova_elite = device_infos[0].product_id() == 0x2244;
+        let oled_report_id: u8 = if is_nova_elite { 0x01 } else { 0x06 };
+        let info_report_id: u8 = if is_nova_elite { 0x07 } else { 0x06 };
 
         // On Linux, both devices can get put under the same hidraw interface, meaning we use the same device for both
         let dev = if device_infos[0].path() == device_infos[1].path() {
@@ -143,6 +156,8 @@ impl Device {
             dev,
             width: SCREEN_WIDTH,
             height: SCREEN_HEIGHT,
+            oled_report_id,
+            info_report_id,
         })
     }
 
@@ -193,7 +208,7 @@ impl Device {
     // The Bitmap must already be within the report limits (from `split_for_report`)
     fn create_report(&self, d: &ReportDrawable) -> DrawReport {
         let mut report: DrawReport = [0; SCREEN_REPORT_SIZE];
-        report[0] = 0x06; // hid report id
+        report[0] = self.oled_report_id; // hid report id
         report[1] = 0x93; // command id
         report[2] = d.dst_x as u8;
         report[3] = d.dst_y as u8;
@@ -292,7 +307,7 @@ impl Device {
             bail!("brightness too high");
         }
         let mut report = [0; 64];
-        report[0] = 0x06; // hid report id
+        report[0] = self.oled_report_id; // hid report id
         report[1] = 0x85; // command id
         report[2] = value;
         self.dev.oled().write(&report)?;
@@ -303,7 +318,7 @@ impl Device {
     /// Data is received via events.
     pub fn probe(&self) -> anyhow::Result<()> {
         let mut report = [0; 64];
-        report[0] = 0x06; // hid report id
+        report[0] = self.info_report_id; // hid report id
         report[1] = 0xb0; // command id, get various data
         self.dev.info().write(&report)?;
         report[1] = 0x20; // command id, get volume info
@@ -314,7 +329,7 @@ impl Device {
     /// Return to SteelSeries UI.
     pub fn return_to_ui(&self) -> anyhow::Result<()> {
         let mut report = [0; 64];
-        report[0] = 0x06; // hid report id
+        report[0] = self.oled_report_id; // hid report id
         report[1] = 0x95; // command id
         self.dev.oled().write(&report)?;
         Ok(())
