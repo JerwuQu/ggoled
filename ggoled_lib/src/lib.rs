@@ -335,7 +335,13 @@ impl Device {
         Ok(())
     }
 
-    fn parse_event(buf: &[u8; 64]) -> Vec<DeviceEvent> {
+    // `buf[0]` is the HID report ID of the *incoming* report. On Nova Pro, unsolicited
+    // push events (volume/connection/battery) come in tagged with report id 7, while
+    // replies to commands we send come back tagged with the same id we sent (6). The
+    // Nova Elite only declares a single input report id (`self.info_report_id`, 7) for
+    // its info collection, so on that device command replies also come back as 7 -
+    // hence matching against `self.info_report_id` rather than the literal `0x06`.
+    fn parse_event(&self, buf: &[u8; 64]) -> Vec<DeviceEvent> {
         #[cfg(debug_assertions)]
         println!("parse_event: {:x?}", buf);
         match (buf[0], buf[1]) {
@@ -356,7 +362,7 @@ impl Device {
             // 0-8 values for battery levels
             // we handle both event and command reply the same (because they look the same)
             // can fetch this info with a [0x06, 0xb7] command, but [0x06, 0xb0] seems superior (?)
-            (0x07, 0xb7) | (0x06, 0xb7) => vec![DeviceEvent::Battery {
+            (0x07, 0xb7) => vec![DeviceEvent::Battery {
                 headset: buf[2],
                 charging: buf[3],
                 // NOTE: there's a possibility `buf[4]` represents either the max value or simply just `8` for connected
@@ -364,25 +370,25 @@ impl Device {
 
             // --- command responses ---
 
-            // version info, fetch with [0x06, 0x10]
+            // version info, fetch with [<id>, 0x10]
             // basically useless for us so not implemented
-            (0x06, 0x10) => vec![],
+            (id, 0x10) if id == self.info_report_id => vec![],
 
-            // [0x06, 0x20] returns a bunch of info
+            // [<id>, 0x20] returns a bunch of info
             // same regardless of connected state
             // i think some of it is equalizer levels, but i've got no idea what the rest is
-            (0x06, 0x20) => vec![DeviceEvent::Volume {
+            (id, 0x20) if id == self.info_report_id => vec![DeviceEvent::Volume {
                 volume: 0x38u8.saturating_sub(buf[3]), // NOTE: different byte from Volume event
             }],
 
-            // unknown data, fetch with [0x06, 0x80]
+            // unknown data, fetch with [<id>, 0x80]
             // same regardless of connected state
             // not implemented
-            (0x06, 0x80) => vec![],
+            (id, 0x80) if id == self.info_report_id => vec![],
 
             // various data
             // there's a couple of bytes i've got no idea what they're supposed to represent
-            (0x06, 0xb0) => vec![
+            (id, 0xb0) if id == self.info_report_id => vec![
                 DeviceEvent::HeadsetConnection {
                     wireless: buf[15] == 8,
                     bluetooth: buf[5] == 1,
@@ -395,6 +401,12 @@ impl Device {
                 },
             ],
 
+            // command reply variant of the 0xb7 battery event above
+            (id, 0xb7) if id == self.info_report_id => vec![DeviceEvent::Battery {
+                headset: buf[2],
+                charging: buf[3],
+            }],
+
             _ => vec![],
         }
     }
@@ -404,7 +416,7 @@ impl Device {
         let mut buf = [0u8; 64];
         self.dev.info().set_blocking_mode(true)?;
         _ = self.dev.info().read(&mut buf)?;
-        Ok(Self::parse_event(&buf))
+        Ok(self.parse_event(&buf))
     }
 
     /// Return any pending events from the device. Non-blocking.
@@ -417,7 +429,7 @@ impl Device {
             if len == 0 {
                 break;
             } else {
-                events.append(&mut Self::parse_event(&buf));
+                events.append(&mut self.parse_event(&buf));
             }
         }
         Ok(events)
