@@ -59,6 +59,7 @@ The CLI is also available: `flatpak run --command=ggoled se.ramse.ggoled text He
    - **C:** CLI only: `cargo install --locked --git https://github.com/JerwuQu/ggoled.git ggoled`
 3. (_Linux only_) Install the udev rules as described in the [flatpak section](#linux-flatpak) above to run without root.
 4. (_Linux only, optional_) Install the systemd service: see below.
+5. (_macOS only, optional_) Install the LaunchAgent: see below.
 
 ## CLI usage examples
 
@@ -87,7 +88,7 @@ For Windows, it gets media information from the Windows API which makes it work 
 There are also features to avoid OLED burn-in that is otherwise unavoidable when using the official software, such as the screensaver function which will turn off the OLED display when away from the computer, or the OLED shifter which will infrequently move things around slightly.
 To extend the lifespan of your display, both of these are strongly recommended to use, along with using a low screen brightness.
 
-### systemd service
+### Linux autostart (systemd service)
 
 ```sh
 mkdir -p ~/.config/systemd/user/
@@ -96,11 +97,25 @@ systemctl --user daemon-reload
 systemctl --user enable --now ggoled_app.service
 ```
 
+### macOS autostart (LaunchAgent)
+
+Copy [`se.ramse.ggoled_app.plist`](https://github.com/JerwuQu/ggoled/blob/master/se.ramse.ggoled_app.plist) from the repo into `~/Library/LaunchAgents/` (create the directory if missing).
+Replace `/path/to/ggoled_app` in it with the absolute path to the binary, e.g. `/Users/you/.cargo/bin/ggoled_app`, since launchd doesn't expand `~`.
+Then load it:
+
+```sh
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/se.ramse.ggoled_app.plist
+```
+
+To stop it until next login, run `launchctl bootout gui/$(id -u)/se.ramse.ggoled_app`.
+To disable it, also delete the plist.
+After editing the plist, run `bootout` before running `bootstrap` again.
+
 ### Custom font
 
 It's recommended to use bitmap fonts to avoid weird artifacting, but any TTF or OTF font should work.
 
-Modify the config file (`%appdata%\ggoled_app.toml` on Windows, `~/.config/ggoled_app.toml` on Linux) and add:
+Modify the config file (`%appdata%\ggoled_app.toml` on Windows, `~/.config/ggoled_app.toml` on Linux, `~/Library/Application Support/ggoled_app.toml` on macOS) and add:
 
 ```toml
 [font]
