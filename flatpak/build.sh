@@ -11,5 +11,5 @@ flatpak install --user --noninteractive flathub org.flatpak.Builder
 cargo vendor flatpak/cargo-vendor > flatpak/cargo-config.toml
 
 # Build
-flatpak run org.flatpak.Builder --user --repo=flatpak/repo --force-clean --install-deps-from=flathub --state-dir=flatpak/.flatpak-builder flatpak/build-dir flatpak/se.ramse.ggoled.yml
+flatpak run org.flatpak.Builder --user --disable-rofiles-fuse --repo=flatpak/repo --force-clean --install-deps-from=flathub --state-dir=flatpak/.flatpak-builder flatpak/build-dir flatpak/se.ramse.ggoled.yml
 flatpak build-bundle flatpak/repo flatpak/ggoled-"$(flatpak --default-arch)".flatpak se.ramse.ggoled
